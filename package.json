@@ -1,0 +1,33 @@
+{
+  "name": "ai-bot",
+  "version": "1.0.0",
+  "description": "Advanced AI Ticket System",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy.js",
+    "activity:install": "npm --prefix activity install",
+    "activity:build": "npm --prefix activity run build",
+    "activity:dev": "npm --prefix activity run dev",
+    "dev": "node --watch src/index.js",
+    "health": "node -e \"console.log('VaultX services: dashboard=3000 activity=5173')\"",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart vaultx-platform"
+  },
+  "keywords": [
+    "discord",
+    "discordjs",
+    "tickets",
+    "ai"
+  ],
+  "author": "Ai-Bot",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "discord.js": "^14.27.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "openai": "^7.5.0"
+  }
+}
