@@ -871,7 +871,7 @@ process.on(
 
         console.error(
             "❌ Uncaught exception:",
-        error
+            error
         );
 
     }
@@ -891,8 +891,8 @@ function startTicketAutoClose() {
             try {
                 await channel.send({ content: `〢 **Ticket auto-closed**\n> No activity for ${hours}h.` });
                 updateTicketRecord(ticket.channel_id, { status: "closed", closed_at: Date.now() });
-                await channel.setArchived?.(true).catch(() => {});
-                await channel.delete("VaultX automatic ticket closure").catch(() => {});
+                await channel.setArchived?.(true).catch(() => { });
+                await channel.delete("VaultX automatic ticket closure").catch(() => { });
             } catch (error) { console.warn("Auto-close failed:", error.message); }
         }
     };
@@ -954,6 +954,27 @@ async function start() {
         startDashboard(client);
         startActivityServer();
         startTicketAutoClose();
+
+        // Render requires the Web Service to listen on PORT
+        const renderPort = Number(process.env.PORT || 10000);
+
+        const healthServer = (await import("express")).default();
+
+        healthServer.get("/", (_req, res) => {
+            res.status(200).send("VaultX Bot is online.");
+        });
+
+        healthServer.get("/health", (_req, res) => {
+            res.status(200).json({
+                ok: true,
+                bot: client.isReady(),
+                service: "vaultx"
+            });
+        });
+
+        healthServer.listen(renderPort, "0.0.0.0", () => {
+            console.log(`🌐 Render health server listening on port ${renderPort}`);
+        });
 
     } catch (error) {
 
