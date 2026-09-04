@@ -259,9 +259,11 @@ export function startActivityServer() {
 
   registerActivityRoutes(app);
 
-  const port = Number(process.env.ACTIVITY_PORT || 5173);
-  const server = app.listen(port, () => {
-    console.log(`🎮 VaultX Activity listening on http://localhost:${port}`);
+  const port = Number(process.env.PORT || process.env.ACTIVITY_PORT || 5173);
+
+  const server = app.listen(port, "0.0.0.0", () => {
+    console.log(`🎮 VaultX Activity listening on port ${port}`);
   });
+
   return server;
 }

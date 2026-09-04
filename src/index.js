@@ -955,27 +955,6 @@ async function start() {
         startActivityServer();
         startTicketAutoClose();
 
-        // Render requires the Web Service to listen on PORT
-        const renderPort = Number(process.env.PORT || 10000);
-
-        const healthServer = (await import("express")).default();
-
-        healthServer.get("/", (_req, res) => {
-            res.status(200).send("VaultX Bot is online.");
-        });
-
-        healthServer.get("/health", (_req, res) => {
-            res.status(200).json({
-                ok: true,
-                bot: client.isReady(),
-                service: "vaultx"
-            });
-        });
-
-        healthServer.listen(renderPort, "0.0.0.0", () => {
-            console.log(`🌐 Render health server listening on port ${renderPort}`);
-        });
-
     } catch (error) {
 
         console.error(
