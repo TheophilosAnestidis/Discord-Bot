@@ -1,4 +1,4 @@
-import { DiscordSDK } from 'https://cdn.jsdelivr.net/npm/@discord/embedded-app-sdk@2.5.0/+esm';
+import { DiscordSDK } from '@discord/embedded-app-sdk';
 import './style.css';
 
 const app = document.querySelector('#app');
