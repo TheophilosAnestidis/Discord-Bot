@@ -119,8 +119,10 @@ function clearSessionCookie(response) {
 
 function dashboardUrl() {
 
+    const publicUrl = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
     return process.env.DASHBOARD_REDIRECT_URI ||
-        `http://localhost:${process.env.DASHBOARD_PORT || 3000}/auth/callback`;
+        (publicUrl ? `${publicUrl}/auth/callback` :
+            `http://localhost:${process.env.DASHBOARD_PORT || 3000}/auth/callback`);
 
 }
 
@@ -635,6 +637,11 @@ export function startDashboard(client) {
 
     app.get("/auth/callback", async (request, response) => {
 
+        if (request.query.error) {
+            const reason = request.query.error_description || request.query.error;
+            return response.status(400).send(`Discord login was cancelled or rejected: ${String(reason)}`);
+        }
+
         const expiresAt =
             oauthStates.get(request.query.state);
 
@@ -642,7 +649,7 @@ export function startDashboard(client) {
 
         if (!expiresAt || expiresAt < Date.now()) {
 
-            return response.status(400).send("Invalid or expired login state.");
+            return response.status(400).send("Invalid or expired login state. Check that the Dashboard URL and Discord OAuth redirect URI match exactly.");
 
         }
 
@@ -679,7 +686,7 @@ export function startDashboard(client) {
 
             console.error("Dashboard Discord login failed:", error);
 
-            return response.status(502).send("Discord login failed.");
+            return response.status(502).send(`Discord login failed: ${error.message || "token exchange or user lookup failed"}`);
 
         }
 
