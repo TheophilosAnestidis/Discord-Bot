@@ -9,6 +9,10 @@ let state = null;
 let self = null;
 let instanceId = null;
 let pollTimer = null;
+let currentMode = 'menu';
+let shooterGame = null;
+const shooterKeys = { up: false, down: false, left: false, right: false, fire: false };
+const shooterPointer = { x: 430, y: 260, down: false };
 
 const fallbackClientId =
   import.meta.env.VITE_DISCORD_CLIENT_ID ||
@@ -21,20 +25,78 @@ function render() {
     return;
   }
 
+  if (currentMode === 'menu') {
+    renderMenu();
+    return;
+  }
+
+  if (currentMode === 'shooter') {
+    renderShooter();
+    return;
+  }
+
+  renderQuiz();
+}
+
+function renderMenu() {
+  app.innerHTML = `
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">VAULT<span>X</span></div>
+          <div class="subtitle">ACTIVITY HUB</div>
+        </div>
+        <div class="round">2 MODES READY</div>
+      </header>
+
+      <section class="mode-grid">
+        <article class="activity-card quiz-card">
+          <div class="badge">MULTIPLAYER</div>
+          <h1>Quiz Battle</h1>
+          <p>Answer fast, stack points, and outscore your friends in the lobby.</p>
+          <button class="primary" data-mode="quiz">Play Quiz</button>
+        </article>
+
+        <article class="activity-card shooter-card">
+          <div class="badge">ARCADE</div>
+          <h1>Gun Arena</h1>
+          <p>Blast drones, dodge fire, and survive as long as you can.</p>
+          <button class="primary" data-mode="shooter">Launch Game</button>
+        </article>
+      </section>
+    </main>
+  `;
+
+  document.querySelectorAll('[data-mode]').forEach((button) => {
+    button.addEventListener('click', () => {
+      currentMode = button.dataset.mode;
+      if (currentMode === 'shooter') {
+        stopShooterGame();
+      }
+      render();
+    });
+  });
+}
+
+function renderQuiz() {
   const leaderboard = [...state.players].sort((a, b) => b.score - a.score);
-  const selfPlayer = leaderboard.find(p => p.id === self?.id);
+  const selfPlayer = leaderboard.find((p) => p.id === self?.id);
   const canStart = state.phase === 'lobby' && selfPlayer?.host && leaderboard.length >= 2;
 
   if (state.phase === 'finished') {
-    app.innerHTML = `<main class="shell"><section class="panel result"><div class="brand">VAULT<span>X</span></div><div class="eyebrow">QUIZ BATTLE</div><h1>Game Over</h1><p class="muted">Final leaderboard</p>${leaderboard.map((p, i) => `<div class="rank"><span>#${i + 1}</span><strong>${escapeHtml(p.username)}</strong><b>${p.score}</b></div>`).join('')}<button id="restart" class="primary">Play Again</button></section></main>`;
+    app.innerHTML = `<main class="shell"><section class="panel result"><div class="brand">VAULT<span>X</span></div><div class="eyebrow">QUIZ BATTLE</div><h1>Game Over</h1><p class="muted">Final leaderboard</p>${leaderboard.map((p, i) => `<div class="rank"><span>#${i + 1}</span><strong>${escapeHtml(p.username)}</strong><b>${p.score}</b></div>`).join('')}<button id="restart" class="primary">Play Again</button><button class="secondary" data-mode="menu">Back to hub</button></section></main>`;
     document.querySelector('#restart').onclick = () => action('start');
+    document.querySelector('[data-mode="menu"]').onclick = () => {
+      currentMode = 'menu';
+      render();
+    };
     return;
   }
 
   const seconds = state.deadline ? Math.max(0, Math.ceil((state.deadline - Date.now()) / 1000)) : 0;
   app.innerHTML = `
     <main class="shell">
-      <header class="topbar"><div><div class="brand">VAULT<span>X</span></div><div class="subtitle">QUIZ BATTLE</div></div><div class="round">${state.phase === 'playing' ? `ROUND ${state.round + 1} / ${state.totalRounds}` : `LOBBY • ${leaderboard.length}/12`}</div></header>
+      <header class="topbar"><div><div class="brand">VAULT<span>X</span></div><div class="subtitle">QUIZ BATTLE</div></div><div class="header-actions"><div class="round">${state.phase === 'playing' ? `ROUND ${state.round + 1} / ${state.totalRounds}` : `LOBBY • ${leaderboard.length}/12`}</div><button class="secondary" data-mode="menu">Hub</button></div></header>
       <section class="game-grid">
         <div class="panel main-panel">
           ${state.phase === 'lobby' ? `
@@ -51,18 +113,431 @@ function render() {
       </section>
     </main>`;
 
+  document.querySelector('[data-mode="menu"]').onclick = () => {
+    currentMode = 'menu';
+    render();
+  };
   document.querySelector('#start')?.addEventListener('click', () => action('start'));
-  document.querySelectorAll('[data-answer]').forEach(button => button.addEventListener('click', () => action('answer', Number(button.dataset.answer))));
+  document.querySelectorAll('[data-answer]').forEach((button) => {
+    button.addEventListener('click', () => action('answer', Number(button.dataset.answer)));
+  });
+}
+
+function renderShooter() {
+  app.innerHTML = `
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">VAULT<span>X</span></div>
+          <div class="subtitle">GUN ARENA</div>
+        </div>
+        <div class="header-actions">
+          <div class="round">SCORE CHASE</div>
+          <button class="secondary" data-mode="menu">Hub</button>
+        </div>
+      </header>
+      <section class="shooter-panel">
+        <canvas id="arenaCanvas" width="860" height="520"></canvas>
+      </section>
+    </main>
+  `;
+
+  document.querySelector('[data-mode="menu"]').onclick = () => {
+    currentMode = 'menu';
+    stopShooterGame();
+    render();
+  };
+
+  const canvas = document.querySelector('#arenaCanvas');
+  initShooterGame(canvas);
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function activityApiPath(pathname) {
-  // In Discord the Activity proxy is the supported way to reach the backend.
-  // The Express server also accepts the same path directly for local testing.
   return `/.proxy${pathname}`;
+}
+
+function setupShooterInput() {
+  window.addEventListener('keydown', (event) => {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(event.code)) {
+      event.preventDefault();
+    }
+    if (event.code === 'ArrowUp' || event.code === 'KeyW') shooterKeys.up = true;
+    if (event.code === 'ArrowDown' || event.code === 'KeyS') shooterKeys.down = true;
+    if (event.code === 'ArrowLeft' || event.code === 'KeyA') shooterKeys.left = true;
+    if (event.code === 'ArrowRight' || event.code === 'KeyD') shooterKeys.right = true;
+    if (event.code === 'Space') shooterKeys.fire = true;
+  });
+
+  window.addEventListener('keyup', (event) => {
+    if (event.code === 'ArrowUp' || event.code === 'KeyW') shooterKeys.up = false;
+    if (event.code === 'ArrowDown' || event.code === 'KeyS') shooterKeys.down = false;
+    if (event.code === 'ArrowLeft' || event.code === 'KeyA') shooterKeys.left = false;
+    if (event.code === 'ArrowRight' || event.code === 'KeyD') shooterKeys.right = false;
+    if (event.code === 'Space') shooterKeys.fire = false;
+  });
+}
+
+function stopShooterGame() {
+  if (shooterGame?.rafId) cancelAnimationFrame(shooterGame.rafId);
+  shooterGame = null;
+}
+
+function initShooterGame(canvas) {
+  if (!canvas) return;
+
+  if (!window.__vaultxShooterListenersAttached) {
+    setupShooterInput();
+    window.addEventListener('mouseup', () => {
+      shooterPointer.down = false;
+    });
+    window.__vaultxShooterListenersAttached = true;
+  }
+
+  const ctx = canvas.getContext('2d');
+  const bestScore = Number(localStorage.getItem('vaultx-gun-arena-best') || '0');
+  const game = {
+    canvas,
+    ctx,
+    bestScore,
+    score: 0,
+    health: 100,
+    wave: 1,
+    over: false,
+    lastTime: 0,
+    spawnTimer: 0,
+    bullets: [],
+    enemyBullets: [],
+    enemies: [],
+    particles: [],
+    shootCooldown: 0,
+    player: {
+      x: canvas.width / 2,
+      y: canvas.height - 42,
+      radius: 20,
+      speed: 4.5,
+      color: '#7c9cff'
+    }
+  };
+
+  const pointerPosition = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
+    shooterPointer.x = x;
+    shooterPointer.y = y;
+  };
+
+  canvas.addEventListener('mousemove', pointerPosition);
+  canvas.addEventListener('mousedown', (event) => {
+    pointerPosition(event);
+    shooterPointer.down = true;
+  });
+  window.addEventListener('mouseup', () => {
+    shooterPointer.down = false;
+  });
+
+  function reset() {
+    game.score = 0;
+    game.health = 100;
+    game.wave = 1;
+    game.over = false;
+    game.spawnTimer = 0.8;
+    game.bullets = [];
+    game.enemyBullets = [];
+    game.enemies = [];
+    game.particles = [];
+    game.shootCooldown = 0;
+    game.player.x = canvas.width / 2;
+    game.player.y = canvas.height - 42;
+  }
+
+  function fireBullet() {
+    if (game.over) return;
+    const dirX = shooterPointer.x - game.player.x;
+    const dirY = shooterPointer.y - game.player.y;
+    const angle = Math.atan2(dirY, dirX) || -Math.PI / 2;
+    const speed = 11;
+    game.bullets.push({
+      x: game.player.x + Math.cos(angle) * 18,
+      y: game.player.y + Math.sin(angle) * 18,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      radius: 4,
+      color: '#ffca5a'
+    });
+  }
+
+  function spawnEnemy() {
+    const radius = 12 + Math.random() * 18;
+    const x = 30 + Math.random() * (canvas.width - 60);
+    const y = -radius - 20;
+    const drift = (Math.random() - 0.5) * 2;
+    game.enemies.push({
+      x,
+      y,
+      radius,
+      drift,
+      speed: 1.1 + Math.random() * 1.6 + game.wave * 0.18,
+      shootCooldown: 1 + Math.random() * 1.7,
+      color: `hsl(${Math.random() * 40 + 200}, 80%, 62%)`
+    });
+  }
+
+  function createBurst(x, y, color) {
+    for (let i = 0; i < 10; i += 1) {
+      game.particles.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 4,
+        vy: (Math.random() - 0.5) * 4,
+        life: 25 + Math.random() * 20,
+        radius: 2 + Math.random() * 4,
+        color
+      });
+    }
+  }
+
+  function updateParticles() {
+    for (const particle of game.particles) {
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+      particle.life -= 1;
+    }
+    game.particles = game.particles.filter((particle) => particle.life > 0);
+  }
+
+  function update(delta) {
+    const player = game.player;
+    const moveX = (shooterKeys.right ? 1 : 0) - (shooterKeys.left ? 1 : 0);
+    const moveY = (shooterKeys.down ? 1 : 0) - (shooterKeys.up ? 1 : 0);
+    const length = Math.hypot(moveX, moveY) || 1;
+
+    player.x += (moveX / length) * player.speed * delta;
+    player.y += (moveY / length) * player.speed * delta;
+    player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+    player.y = Math.max(player.radius + 20, Math.min(canvas.height - player.radius, player.y));
+
+    game.shootCooldown = Math.max(0, game.shootCooldown - delta * 0.8);
+    const firing = shooterPointer.down || shooterKeys.fire;
+    if (firing && game.shootCooldown <= 0) {
+      fireBullet();
+      game.shootCooldown = 0.18;
+    }
+
+    if (game.over) {
+      return;
+    }
+
+    game.spawnTimer -= delta / 60;
+    if (game.spawnTimer <= 0) {
+      spawnEnemy();
+      game.spawnTimer = Math.max(0.45, 1.3 - game.wave * 0.08);
+    }
+
+    for (let i = game.bullets.length - 1; i >= 0; i -= 1) {
+      const bullet = game.bullets[i];
+      bullet.x += bullet.vx * delta;
+      bullet.y += bullet.vy * delta;
+      if (bullet.y < -20 || bullet.y > canvas.height + 20 || bullet.x < -20 || bullet.x > canvas.width + 20) {
+        game.bullets.splice(i, 1);
+      }
+    }
+
+    for (let i = game.enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = game.enemies[i];
+      enemy.y += enemy.speed * delta;
+      enemy.x += enemy.drift * delta;
+      enemy.shootCooldown -= delta / 60;
+
+      if (enemy.shootCooldown <= 0) {
+        const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+        const bulletSpeed = 3 + game.wave * 0.25;
+        game.enemyBullets.push({
+          x: enemy.x,
+          y: enemy.y,
+          vx: Math.cos(angle) * bulletSpeed,
+          vy: Math.sin(angle) * bulletSpeed,
+          radius: 5,
+          color: '#ff5d7a'
+        });
+        enemy.shootCooldown = 1.2 + Math.random() * 1.5;
+      }
+
+      if (enemy.y > canvas.height + 50) {
+        game.enemies.splice(i, 1);
+        game.health = Math.max(0, game.health - 10);
+        continue;
+      }
+
+      for (let b = game.bullets.length - 1; b >= 0; b -= 1) {
+        const bullet = game.bullets[b];
+        const dist = Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y);
+        if (dist <= enemy.radius + bullet.radius) {
+          game.bullets.splice(b, 1);
+          enemy.radius *= 0.8;
+          game.score += 25;
+          createBurst(enemy.x, enemy.y, enemy.color);
+          if (enemy.radius <= 8) {
+            game.enemies.splice(i, 1);
+            createBurst(enemy.x, enemy.y, '#ffd166');
+          }
+          break;
+        }
+      }
+    }
+
+    for (let i = game.enemyBullets.length - 1; i >= 0; i -= 1) {
+      const bullet = game.enemyBullets[i];
+      bullet.x += bullet.vx * delta;
+      bullet.y += bullet.vy * delta;
+      const dist = Math.hypot(player.x - bullet.x, player.y - bullet.y);
+      if (dist <= player.radius + bullet.radius) {
+        game.enemyBullets.splice(i, 1);
+        game.health = Math.max(0, game.health - 15);
+        createBurst(bullet.x, bullet.y, '#ff5d7a');
+        continue;
+      }
+      if (bullet.x < -20 || bullet.x > canvas.width + 20 || bullet.y < -20 || bullet.y > canvas.height + 20) {
+        game.enemyBullets.splice(i, 1);
+      }
+    }
+
+    game.wave = 1 + Math.floor(game.score / 250);
+
+    if (game.health <= 0) {
+      game.over = true;
+      game.bestScore = Math.max(game.bestScore, game.score);
+      localStorage.setItem('vaultx-gun-arena-best', String(game.bestScore));
+    }
+
+    updateParticles();
+  }
+
+  function drawBackground() {
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, '#090d18');
+    gradient.addColorStop(1, '#111826');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = 'rgba(123, 169, 255, 0.16)';
+    for (let x = 0; x < canvas.width; x += 36) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += 36) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(canvas.width, y);
+      ctx.stroke();
+    }
+  }
+
+  function draw() {
+    drawBackground();
+
+    for (const bullet of game.bullets) {
+      ctx.fillStyle = bullet.color;
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const bullet of game.enemyBullets) {
+      ctx.fillStyle = bullet.color;
+      ctx.beginPath();
+      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const enemy of game.enemies) {
+      ctx.fillStyle = enemy.color;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    for (const particle of game.particles) {
+      ctx.fillStyle = particle.color;
+      ctx.globalAlpha = Math.max(0, particle.life / 40);
+      ctx.fillRect(particle.x, particle.y, particle.radius * 2, particle.radius * 2);
+      ctx.globalAlpha = 1;
+    }
+
+    const player = game.player;
+    ctx.save();
+    ctx.translate(player.x, player.y);
+    ctx.fillStyle = '#7c9cff';
+    ctx.beginPath();
+    ctx.moveTo(0, -18);
+    ctx.lineTo(14, 16);
+    ctx.lineTo(0, 8);
+    ctx.lineTo(-14, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    const angle = Math.atan2(shooterPointer.y - player.y, shooterPointer.x - player.x);
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.moveTo(player.x, player.y);
+    ctx.lineTo(player.x + Math.cos(angle) * 26, player.y + Math.sin(angle) * 26);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ecf6ff';
+    ctx.font = 'bold 20px Inter, sans-serif';
+    ctx.fillText(`Score: ${game.score}`, 18, 32);
+    ctx.fillText(`Best: ${game.bestScore}`, 18, 60);
+    ctx.fillText(`Hull: ${game.health}%`, 18, 88);
+    ctx.fillText(`Wave ${game.wave}`, canvas.width - 110, 32);
+
+    if (game.over) {
+      ctx.fillStyle = 'rgba(4, 7, 16, 0.75)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 42px Inter, sans-serif';
+      ctx.fillText('Mission Failed', canvas.width / 2, canvas.height / 2 - 12);
+      ctx.font = '20px Inter, sans-serif';
+      ctx.fillText(`Final score: ${game.score}`, canvas.width / 2, canvas.height / 2 + 28);
+      ctx.fillText('Click restart to launch again', canvas.width / 2, canvas.height / 2 + 58);
+      ctx.textAlign = 'left';
+
+      const restartButton = document.querySelector('#restartShooter');
+      if (restartButton) restartButton.style.display = 'inline-flex';
+    } else {
+      const restartButton = document.querySelector('#restartShooter');
+      if (restartButton) restartButton.style.display = 'none';
+    }
+  }
+
+  function frame(time) {
+    const delta = Math.min(2, (time - game.lastTime || 16) / 16.667);
+    game.lastTime = time;
+    update(delta);
+    draw();
+    shooterGame.rafId = requestAnimationFrame(frame);
+  }
+
+  reset();
+  shooterGame = { ...game, reset, rafId: 0 };
+
+  const hud = document.createElement('div');
+  hud.className = 'shooter-hud';
+  hud.innerHTML = '<button id="restartShooter" class="primary">Restart</button>';
+  canvas.insertAdjacentElement('afterend', hud);
+  document.querySelector('#restartShooter').addEventListener('click', () => {
+    shooterGame.reset();
+    shooterGame.over = false;
+  });
+
+  shooterGame.rafId = requestAnimationFrame(frame);
 }
 
 async function setupDiscord() {
@@ -149,7 +624,7 @@ function showError(message) {
 }
 
 render();
-setupDiscord().catch(error => {
+setupDiscord().catch((error) => {
   console.error(error);
   app.innerHTML = `<main class="shell"><section class="panel center"><div class="brand">VAULT<span>X</span></div><h1>Activity unavailable</h1><p class="muted">${escapeHtml(error.message || 'Unknown error')}</p><p class="hint">Make sure the Activity URL and OAuth configuration are set in the Discord Developer Portal.</p></section></main>`;
 });
