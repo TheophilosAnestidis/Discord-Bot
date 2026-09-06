@@ -129,10 +129,10 @@ function renderShooter() {
       <header class="topbar">
         <div>
           <div class="brand">VAULT<span>X</span></div>
-          <div class="subtitle">GUN ARENA</div>
+          <div class="subtitle">CHAOS ARENA</div>
         </div>
         <div class="header-actions">
-          <div class="round">SCORE CHASE</div>
+          <div class="round">OFFICE PANIC</div>
           <button class="secondary" data-mode="menu">Hub</button>
         </div>
       </header>
@@ -191,14 +191,12 @@ function initShooterGame(canvas) {
 
   if (!window.__vaultxShooterListenersAttached) {
     setupShooterInput();
-    window.addEventListener('mouseup', () => {
-      shooterPointer.down = false;
-    });
     window.__vaultxShooterListenersAttached = true;
   }
 
   const ctx = canvas.getContext('2d');
-  const bestScore = Number(localStorage.getItem('vaultx-gun-arena-best') || '0');
+  const bestScore = Number(localStorage.getItem('vaultx-chaos-best') || '0');
+  const chaosNames = ['Karen', 'Zoom Bot', 'Spam', 'CEO', 'Intern', 'Gamer', 'Panic', 'Meme'];
   const game = {
     canvas,
     ctx,
@@ -210,16 +208,17 @@ function initShooterGame(canvas) {
     lastTime: 0,
     spawnTimer: 0,
     bullets: [],
-    enemyBullets: [],
     enemies: [],
+    pickups: [],
     particles: [],
     shootCooldown: 0,
+    message: 'The office is barely holding together.',
     player: {
       x: canvas.width / 2,
       y: canvas.height - 42,
-      radius: 20,
-      speed: 4.5,
-      color: '#7c9cff'
+      radius: 19,
+      speed: 5,
+      color: '#7af0ff'
     }
   };
 
@@ -245,10 +244,11 @@ function initShooterGame(canvas) {
     game.health = 100;
     game.wave = 1;
     game.over = false;
+    game.message = 'The office is barely holding together.';
     game.spawnTimer = 0.8;
     game.bullets = [];
-    game.enemyBullets = [];
     game.enemies = [];
+    game.pickups = [];
     game.particles = [];
     game.shootCooldown = 0;
     game.player.x = canvas.width / 2;
@@ -260,41 +260,57 @@ function initShooterGame(canvas) {
     const dirX = shooterPointer.x - game.player.x;
     const dirY = shooterPointer.y - game.player.y;
     const angle = Math.atan2(dirY, dirX) || -Math.PI / 2;
-    const speed = 11;
+    const speed = 12;
     game.bullets.push({
       x: game.player.x + Math.cos(angle) * 18,
       y: game.player.y + Math.sin(angle) * 18,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: 4,
-      color: '#ffca5a'
+      radius: 5,
+      color: '#ffd166'
     });
   }
 
   function spawnEnemy() {
     const radius = 12 + Math.random() * 18;
-    const x = 30 + Math.random() * (canvas.width - 60);
+    const x = 40 + Math.random() * (canvas.width - 80);
     const y = -radius - 20;
-    const drift = (Math.random() - 0.5) * 2;
+    const drift = (Math.random() - 0.5) * 2.2;
+    const name = chaosNames[Math.floor(Math.random() * chaosNames.length)];
+    const hue = 180 + Math.random() * 120;
     game.enemies.push({
       x,
       y,
       radius,
       drift,
-      speed: 1.1 + Math.random() * 1.6 + game.wave * 0.18,
-      shootCooldown: 1 + Math.random() * 1.7,
-      color: `hsl(${Math.random() * 40 + 200}, 80%, 62%)`
+      speed: 1 + Math.random() * 1.7 + game.wave * 0.15,
+      shootCooldown: 1 + Math.random() * 1.5,
+      color: `hsl(${hue}, 85%, 65%)`,
+      name,
+      hp: 1 + Math.floor((game.wave - 1) / 3)
     });
   }
 
-  function createBurst(x, y, color) {
-    for (let i = 0; i < 10; i += 1) {
+  function spawnPickup() {
+    const pick = ['☕', '🧁', '📎', '🧠', '💣'];
+    game.pickups.push({
+      x: 30 + Math.random() * (canvas.width - 60),
+      y: -20,
+      radius: 12,
+      emoji: pick[Math.floor(Math.random() * pick.length)],
+      vy: 2.4 + Math.random() * 1.2,
+      kind: Math.random() > 0.55 ? 'boost' : 'heal'
+    });
+  }
+
+  function createBurst(x, y, color, count = 10) {
+    for (let i = 0; i < count; i += 1) {
       game.particles.push({
         x,
         y,
-        vx: (Math.random() - 0.5) * 4,
-        vy: (Math.random() - 0.5) * 4,
-        life: 25 + Math.random() * 20,
+        vx: (Math.random() - 0.5) * 5,
+        vy: (Math.random() - 0.5) * 5,
+        life: 18 + Math.random() * 20,
         radius: 2 + Math.random() * 4,
         color
       });
@@ -308,6 +324,20 @@ function initShooterGame(canvas) {
       particle.life -= 1;
     }
     game.particles = game.particles.filter((particle) => particle.life > 0);
+  }
+
+  function maybeChangeMessage() {
+    const lines = [
+      'The printer is on fire again.',
+      'Someone brought a flaming burrito to the meeting.',
+      'A rogue mascot is stealing snacks.',
+      'Your boss is screaming in 4K.',
+      'This is not a workplace incident. It is a lifestyle.',
+      'The coffee machine has become a weapon.'
+    ];
+    if (Math.random() < 0.015) {
+      game.message = lines[Math.floor(Math.random() * lines.length)];
+    }
   }
 
   function update(delta) {
@@ -332,10 +362,12 @@ function initShooterGame(canvas) {
       return;
     }
 
+    maybeChangeMessage();
     game.spawnTimer -= delta / 60;
     if (game.spawnTimer <= 0) {
       spawnEnemy();
-      game.spawnTimer = Math.max(0.45, 1.3 - game.wave * 0.08);
+      if (Math.random() < 0.25) spawnPickup();
+      game.spawnTimer = Math.max(0.38, 1.2 - game.wave * 0.08);
     }
 
     for (let i = game.bullets.length - 1; i >= 0; i -= 1) {
@@ -353,65 +385,84 @@ function initShooterGame(canvas) {
       enemy.x += enemy.drift * delta;
       enemy.shootCooldown -= delta / 60;
 
-      if (enemy.shootCooldown <= 0) {
+      if (enemy.x < 18 || enemy.x > canvas.width - 18) enemy.drift *= -1;
+
+      if (enemy.shootCooldown <= 0 && Math.random() < 0.9) {
         const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-        const bulletSpeed = 3 + game.wave * 0.25;
-        game.enemyBullets.push({
-          x: enemy.x,
-          y: enemy.y,
-          vx: Math.cos(angle) * bulletSpeed,
-          vy: Math.sin(angle) * bulletSpeed,
-          radius: 5,
-          color: '#ff5d7a'
-        });
-        enemy.shootCooldown = 1.2 + Math.random() * 1.5;
+        const bulletSpeed = 3 + game.wave * 0.2;
+        const prank = { x: enemy.x, y: enemy.y, vx: Math.cos(angle) * bulletSpeed, vy: Math.sin(angle) * bulletSpeed, radius: 5, color: '#ff6b6b' };
+        game.bullets.push({ ...prank, fromEnemy: true });
+        enemy.shootCooldown = 1.1 + Math.random() * 1.7;
       }
 
-      if (enemy.y > canvas.height + 50) {
+      if (enemy.y > canvas.height + 24) {
         game.enemies.splice(i, 1);
-        game.health = Math.max(0, game.health - 10);
+        game.health = Math.max(0, game.health - 8);
+        createBurst(enemy.x, enemy.y, '#ff7b72', 12);
         continue;
       }
 
       for (let b = game.bullets.length - 1; b >= 0; b -= 1) {
         const bullet = game.bullets[b];
+        if (bullet.fromEnemy) continue;
         const dist = Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y);
         if (dist <= enemy.radius + bullet.radius) {
           game.bullets.splice(b, 1);
-          enemy.radius *= 0.8;
-          game.score += 25;
-          createBurst(enemy.x, enemy.y, enemy.color);
-          if (enemy.radius <= 8) {
+          enemy.hp -= 1;
+          createBurst(bullet.x, bullet.y, '#ffee8c', 8);
+          if (enemy.hp <= 0) {
             game.enemies.splice(i, 1);
-            createBurst(enemy.x, enemy.y, '#ffd166');
+            game.score += 25 + game.wave * 5;
+            createBurst(enemy.x, enemy.y, enemy.color, 15);
+            if (Math.random() < 0.26) {
+              game.pickups.push({ x: enemy.x, y: enemy.y, radius: 10, emoji: '✨', vy: 2.2, kind: 'boost' });
+            }
           }
           break;
         }
       }
     }
 
-    for (let i = game.enemyBullets.length - 1; i >= 0; i -= 1) {
-      const bullet = game.enemyBullets[i];
-      bullet.x += bullet.vx * delta;
-      bullet.y += bullet.vy * delta;
-      const dist = Math.hypot(player.x - bullet.x, player.y - bullet.y);
-      if (dist <= player.radius + bullet.radius) {
-        game.enemyBullets.splice(i, 1);
-        game.health = Math.max(0, game.health - 15);
-        createBurst(bullet.x, bullet.y, '#ff5d7a');
-        continue;
-      }
-      if (bullet.x < -20 || bullet.x > canvas.width + 20 || bullet.y < -20 || bullet.y > canvas.height + 20) {
-        game.enemyBullets.splice(i, 1);
+    for (let i = game.bullets.length - 1; i >= 0; i -= 1) {
+      const bullet = game.bullets[i];
+      if (bullet.fromEnemy) {
+        bullet.x += bullet.vx * delta;
+        bullet.y += bullet.vy * delta;
+        const dist = Math.hypot(player.x - bullet.x, player.y - bullet.y);
+        if (dist <= player.radius + bullet.radius) {
+          game.bullets.splice(i, 1);
+          game.health = Math.max(0, game.health - 12);
+          createBurst(bullet.x, bullet.y, '#ff5d7a', 12);
+        }
       }
     }
 
-    game.wave = 1 + Math.floor(game.score / 250);
+    for (let i = game.pickups.length - 1; i >= 0; i -= 1) {
+      const pickup = game.pickups[i];
+      pickup.y += pickup.vy * delta;
+      const dist = Math.hypot(player.x - pickup.x, player.y - pickup.y);
+      if (dist <= player.radius + pickup.radius) {
+        game.pickups.splice(i, 1);
+        if (pickup.kind === 'heal') {
+          game.health = Math.min(100, game.health + 18);
+          game.message = 'Coffee rescue! You are alive for another minute.';
+        } else {
+          game.score += 50;
+          game.message = 'Snack bonus! Chaos has a price.';
+        }
+        createBurst(pickup.x, pickup.y, '#9b6cff', 18);
+        continue;
+      }
+      if (pickup.y > canvas.height + 20) game.pickups.splice(i, 1);
+    }
+
+    game.wave = 1 + Math.floor(game.score / 180);
 
     if (game.health <= 0) {
       game.over = true;
       game.bestScore = Math.max(game.bestScore, game.score);
-      localStorage.setItem('vaultx-gun-arena-best', String(game.bestScore));
+      localStorage.setItem('vaultx-chaos-best', String(game.bestScore));
+      game.message = 'The office won. Try again with more rage and snacks.';
     }
 
     updateParticles();
@@ -419,13 +470,13 @@ function initShooterGame(canvas) {
 
   function drawBackground() {
     const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, '#090d18');
-    gradient.addColorStop(1, '#111826');
+    gradient.addColorStop(0, '#090c14');
+    gradient.addColorStop(1, '#111725');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.strokeStyle = 'rgba(123, 169, 255, 0.16)';
     for (let x = 0; x < canvas.width; x += 36) {
+      ctx.strokeStyle = 'rgba(144, 184, 255, 0.12)';
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, canvas.height);
@@ -442,15 +493,18 @@ function initShooterGame(canvas) {
   function draw() {
     drawBackground();
 
-    for (const bullet of game.bullets) {
-      ctx.fillStyle = bullet.color;
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
-      ctx.fill();
+    for (const pickup of game.pickups) {
+      ctx.font = '18px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(pickup.emoji, pickup.x, pickup.y + 6);
     }
 
-    for (const bullet of game.enemyBullets) {
-      ctx.fillStyle = bullet.color;
+    for (const bullet of game.bullets) {
+      if (bullet.fromEnemy) {
+        ctx.fillStyle = '#ff6b6b';
+      } else {
+        ctx.fillStyle = '#ffd166';
+      }
       ctx.beginPath();
       ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
       ctx.fill();
@@ -461,6 +515,10 @@ function initShooterGame(canvas) {
       ctx.beginPath();
       ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = '#f6f7fb';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(enemy.name, enemy.x, enemy.y + 4);
     }
 
     for (const particle of game.particles) {
@@ -473,40 +531,45 @@ function initShooterGame(canvas) {
     const player = game.player;
     ctx.save();
     ctx.translate(player.x, player.y);
-    ctx.fillStyle = '#7c9cff';
+    ctx.fillStyle = '#7af0ff';
     ctx.beginPath();
     ctx.moveTo(0, -18);
-    ctx.lineTo(14, 16);
+    ctx.lineTo(18, 16);
     ctx.lineTo(0, 8);
-    ctx.lineTo(-14, 16);
+    ctx.lineTo(-18, 16);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
 
     const angle = Math.atan2(shooterPointer.y - player.y, shooterPointer.x - player.x);
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
     ctx.beginPath();
     ctx.moveTo(player.x, player.y);
-    ctx.lineTo(player.x + Math.cos(angle) * 26, player.y + Math.sin(angle) * 26);
+    ctx.lineTo(player.x + Math.cos(angle) * 28, player.y + Math.sin(angle) * 28);
     ctx.stroke();
 
-    ctx.fillStyle = '#ecf6ff';
-    ctx.font = 'bold 20px Inter, sans-serif';
-    ctx.fillText(`Score: ${game.score}`, 18, 32);
-    ctx.fillText(`Best: ${game.bestScore}`, 18, 60);
-    ctx.fillText(`Hull: ${game.health}%`, 18, 88);
-    ctx.fillText(`Wave ${game.wave}`, canvas.width - 110, 32);
+    ctx.fillStyle = '#eef3ff';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Score: ${game.score}`, 18, 30);
+    ctx.fillText(`Best: ${game.bestScore}`, 18, 58);
+    ctx.fillText(`Mood: ${game.health}%`, 18, 86);
+    ctx.fillText(`Wave ${game.wave}`, canvas.width - 110, 30);
+
+    ctx.fillStyle = '#d7e6ff';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(game.message, 18, canvas.height - 18);
 
     if (game.over) {
-      ctx.fillStyle = 'rgba(4, 7, 16, 0.75)';
+      ctx.fillStyle = 'rgba(7, 9, 18, 0.72)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
-      ctx.font = 'bold 42px Inter, sans-serif';
-      ctx.fillText('Mission Failed', canvas.width / 2, canvas.height / 2 - 12);
-      ctx.font = '20px Inter, sans-serif';
+      ctx.font = 'bold 42px sans-serif';
+      ctx.fillText('Office apocalypse', canvas.width / 2, canvas.height / 2 - 10);
+      ctx.font = '20px sans-serif';
       ctx.fillText(`Final score: ${game.score}`, canvas.width / 2, canvas.height / 2 + 28);
-      ctx.fillText('Click restart to launch again', canvas.width / 2, canvas.height / 2 + 58);
+      ctx.fillText('Restart and try to save the meeting.', canvas.width / 2, canvas.height / 2 + 58);
       ctx.textAlign = 'left';
 
       const restartButton = document.querySelector('#restartShooter');
