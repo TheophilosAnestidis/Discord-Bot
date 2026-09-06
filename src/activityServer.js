@@ -303,6 +303,15 @@ export function registerActivityRoutes(app) {
         return response.json({ ok: true, state: serialize(instance) });
       }
 
+      if (action === 'delivery_score') {
+        if (!instance.players.has(userId)) {
+          if (instance.players.size >= MAX_PLAYERS) return jsonError(response, 409, `Lobby is full (${MAX_PLAYERS} players).`);
+          instance.players.set(userId, { user: session.user, score: 0, joinedAt: Date.now(), host: instance.players.size === 0 });
+        }
+        instance.players.get(userId).score = Math.max(0, Number(payload.score || 0));
+        return response.json({ ok: true, state: serialize(instance) });
+      }
+
       if (!instance.players.has(userId)) {
         if (instance.players.size >= MAX_PLAYERS) return jsonError(response, 409, `Lobby is full (${MAX_PLAYERS} players).`);
         instance.players.set(userId, { user: session.user, score: 0, joinedAt: Date.now(), host: instance.players.size === 0 });
