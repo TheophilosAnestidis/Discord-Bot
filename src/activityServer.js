@@ -247,6 +247,8 @@ export function startActivityServer() {
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "32kb" }));
 
+  registerActivityRoutes(app);
+
   const dist = path.resolve(process.cwd(), "activity", "dist");
   if (fs.existsSync(path.join(dist, "index.html"))) {
     app.use(express.static(dist, { index: "index.html", maxAge: "1h" }));
@@ -256,8 +258,6 @@ export function startActivityServer() {
       res.status(503).send("VaultX Activity is not built. Run: npm run activity:install && npm run activity:build")
     );
   }
-
-  registerActivityRoutes(app);
 
   const port = Number(process.env.ACTIVITY_PORT || 5173);
   const server = app.listen(port, () => {
