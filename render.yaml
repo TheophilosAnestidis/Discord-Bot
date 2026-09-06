@@ -11,11 +11,11 @@ services:
       - key: SERVICE_MODE
         value: dashboard
       - key: PUBLIC_URL
-        value: https://vaultx-dashboard.onrender.com
+        value: https://discord-bot-r9hl.onrender.com
       - key: DASHBOARD_REDIRECT_URI
-        value: https://vaultx-dashboard.onrender.com/auth/callback
+        value: https://discord-bot-r9hl.onrender.com/auth/callback
       - key: ACTIVITY_URL
-        value: https://vaultx-activity.onrender.com
+        value: https://activity-lne0.onrender.com
       - key: CLIENT_ID
         sync: false
       - key: DISCORD_CLIENT_SECRET
@@ -53,7 +53,7 @@ services:
       - key: SERVICE_MODE
         value: activity
       - key: ACTIVITY_URL
-        value: https://vaultx-activity.onrender.com
+        value: https://activity-lne0.onrender.com
       - key: CLIENT_ID
         sync: false
       - key: DISCORD_CLIENT_SECRET

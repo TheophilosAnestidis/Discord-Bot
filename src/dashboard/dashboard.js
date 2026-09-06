@@ -119,7 +119,7 @@ function clearSessionCookie(response) {
 
 function dashboardUrl() {
 
-    const publicUrl = (process.env.PUBLIC_URL || "").replace(/\/$/, "");
+    const publicUrl = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/$/, "");
     return process.env.DASHBOARD_REDIRECT_URI ||
         (publicUrl ? `${publicUrl}/auth/callback` :
             `http://localhost:${process.env.DASHBOARD_PORT || 3000}/auth/callback`);
