@@ -17,6 +17,23 @@ The bot process starts both web services:
 
 The Dashboard and Activity are intentionally separate services. This makes it easy to expose them through separate public URLs.
 
+## Deploy on Render
+
+This repository includes `render.yaml` for a two-service deployment:
+
+- Dashboard + bot: `https://vaultx-dashboard.onrender.com`
+- Discord Activity: `https://vaultx-activity.onrender.com`
+
+In Render, create a new Blueprint from this repository and deploy `render.yaml`. Add the secret environment values requested by the Blueprint, especially `CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `BOT_TOKEN`, `ADMIN_PASSWORD`, and the Stripe/OpenRouter keys you use.
+
+After deployment:
+
+1. Add `https://vaultx-dashboard.onrender.com/auth/callback` as a Discord OAuth2 redirect URI.
+2. Set the Discord Activity URL to `https://vaultx-activity.onrender.com` in the Discord Developer Portal.
+3. Open the dashboard at `https://vaultx-dashboard.onrender.com`.
+
+If either Render service name is changed, update `PUBLIC_URL`, `DASHBOARD_REDIRECT_URI`, and `ACTIVITY_URL` in the Dashboard service, plus `ACTIVITY_URL` in the Activity service.
+
 ## Setup
 
 1. Copy `.env.example` to `.env`.

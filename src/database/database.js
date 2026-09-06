@@ -2460,6 +2460,13 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 );
 CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_purchase_orders_guild ON purchase_orders(guild_id, created_at);
+CREATE TABLE IF NOT EXISTS premium_order_fulfillments (
+    order_id TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    plan TEXT NOT NULL,
+    fulfilled_by TEXT,
+    fulfilled_at INTEGER NOT NULL
+);
 `);
 
 function purchaseId() {
@@ -2520,4 +2527,12 @@ export function updatePurchaseOrder(id, changes={}) {
   db.prepare(`UPDATE purchase_orders SET ${sets}, updated_at=@updated_at WHERE id=@id`)
     .run({ ...Object.fromEntries(keys.map(k => [k, changes[k]])), id, updated_at: Date.now() });
   return getPurchaseOrder(id);
+}
+
+const _claimPremiumOrder = db.prepare(`INSERT OR IGNORE INTO premium_order_fulfillments
+    (order_id, guild_id, plan, fulfilled_by, fulfilled_at)
+    VALUES (?, ?, ?, ?, ?)`);
+
+export function claimPremiumOrderFulfillment({ orderId, guildId, plan, fulfilledBy }) {
+    return _claimPremiumOrder.run(orderId, guildId, plan, fulfilledBy || null, Date.now()).changes > 0;
 }

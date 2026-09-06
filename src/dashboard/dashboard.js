@@ -17,7 +17,8 @@ import {
     updatePurchaseOrder,
     getPurchaseStats,
     getPurchaseOrdersForUser,
-    addPremiumAuditLog
+    addPremiumAuditLog,
+    claimPremiumOrderFulfillment
 } from "../database/database.js";
 
 import { getPremium, PLANS, grantPremium } from "../premium/premiumService.js";
@@ -173,6 +174,32 @@ function getGuildForAdmin(client, session, guildId) {
 
     return client.guilds.cache.get(guildId) ?? null;
 
+}
+
+function activatePaidOrder(order, actorId = "payment") {
+    if (!order || !["paid", "fulfilled"].includes(order.status)) return order;
+    if (!order.guild_id || !PLANS[order.plan]) return order;
+    const claimed = claimPremiumOrderFulfillment({
+        orderId: order.id,
+        guildId: order.guild_id,
+        plan: order.plan,
+        fulfilledBy: actorId
+    });
+    if (!claimed) return order;
+    grantPremium({
+        guildId: order.guild_id,
+        plan: order.plan,
+        days: order.days,
+        actorId,
+        source: "purchase"
+    });
+    addPremiumAuditLog({
+        guildId: order.guild_id,
+        action: "purchase_paid",
+        actorId,
+        details: JSON.stringify({ orderId: order.id, plan: order.plan })
+    });
+    return order;
 }
 
 
@@ -429,9 +456,8 @@ export function startDashboard(client) {
                 const orderId = session.metadata?.order_id;
                 const order = orderId ? getPurchaseOrder(orderId) : null;
                 if (order && order.status === "pending" && session.payment_status === "paid") {
-                    updatePurchaseOrder(order.id, { status: "paid", email: session.customer_details?.email || order.email });
-                    if (order.guild_id && PLANS[order.plan]) grantPremium({ guildId: order.guild_id, plan: order.plan, days: order.days, actorId: "stripe-webhook", source: "stripe" });
-                    if (order.guild_id) addPremiumAuditLog({ guildId: order.guild_id, action: "purchase_paid", actorId: "stripe-webhook", details: JSON.stringify({ orderId: order.id, plan: order.plan }) });
+                    const paidOrder = updatePurchaseOrder(order.id, { status: "paid", email: session.customer_details?.email || order.email });
+                    activatePaidOrder(paidOrder, "stripe-webhook");
                 }
             }
             if (event.type === "checkout.session.expired") {
@@ -518,11 +544,7 @@ export function startDashboard(client) {
             return response.status(400).json({ error: "Invalid order status." });
         }
         const updated = updatePurchaseOrder(order.id, { status });
-        if ((status === "paid" || status === "fulfilled") && !["paid", "fulfilled"].includes(order.status)) {
-            if (order.guild_id && PLANS[order.plan]) {
-                grantPremium({ guildId: order.guild_id, plan: order.plan, days: order.days, actorId: "admin", source: "purchase" });
-            }
-        }
+        if (status === "paid" || status === "fulfilled") activatePaidOrder(updated, "admin");
         return response.json({ ok: true, order: updated });
     });
 
@@ -536,10 +558,8 @@ export function startDashboard(client) {
         try {
             const session = await retrieveCheckoutSession(sessionId);
             if (session?.payment_status === "paid" && order.status === "pending") {
-                updatePurchaseOrder(order.id, { status: "paid" });
-                if (order.guild_id && PLANS[order.plan]) {
-                    grantPremium({ guildId: order.guild_id, plan: order.plan, days: order.days, actorId: "stripe", source: "purchase" });
-                }
+                const paidOrder = updatePurchaseOrder(order.id, { status: "paid" });
+                activatePaidOrder(paidOrder, "stripe-success");
             }
             return response.send(`<html><head><title>VaultX • Payment</title></head><body style="font-family:Inter,Arial;background:#07080d;color:#fff;display:grid;place-items:center;height:100vh"><div style="padding:32px;border:1px solid #252b3a;border-radius:18px;background:#10131c;text-align:center"><h1>VaultX 〢 Payment ${session?.payment_status === "paid" ? "Confirmed" : "Pending"}</h1><p>Order <b>${order.id}</b></p><p>${session?.payment_status === "paid" ? "Premium has been activated." : "Payment is still being verified."}</p><a href="/" style="color:#a78bfa">Return to dashboard</a></div></body></html>`);
         } catch (error) {
@@ -552,16 +572,18 @@ export function startDashboard(client) {
     );
 
 
-    app.post("/api/shop/checkout", async (request, response) => {
+    app.post("/api/shop/checkout", requireSession, async (request, response) => {
         const { plan, guildId, userId, customerEmail } = request.body || {};
         if (!PLANS[plan]) return response.status(400).json({ error: "Invalid Premium plan." });
+        const guild = getGuildForAdmin(client, request.dashboardSession, guildId);
+        if (!guild) return response.status(403).json({ error: "You need administrator access to purchase Premium for this server." });
         if (guildId) {
             const premium = getPremium(guildId);
             if (premium) return response.status(409).json({ error: "This server already has an active Premium subscription." });
         }
         try {
             const product = shopProducts().find(x => x.id === plan);
-            const order = createPurchaseOrder({ plan, days: PLANS[plan].days, guildId: guildId || null, userId: userId || null, email: customerEmail || null, amount: product.price });
+            const order = createPurchaseOrder({ plan, days: PLANS[plan].days, guildId: guild.id, userId: request.dashboardSession.user.id, email: customerEmail || null, amount: product.price });
             const checkout = await createCheckoutSession({ order, product });
             if (checkout?.url) {
                 updatePurchaseOrder(order.id, { checkout_session_id: checkout.id, checkout_url: checkout.url });
@@ -967,7 +989,7 @@ export function startDashboard(client) {
     });
 
     const port =
-        Number(process.env.DASHBOARD_PORT || 3000);
+        Number(process.env.PORT || process.env.DASHBOARD_PORT || 3000);
 
     const server =
         app.listen(port, () => {

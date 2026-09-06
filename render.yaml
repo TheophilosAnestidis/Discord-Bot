@@ -1,0 +1,60 @@
+services:
+  - type: web
+    name: vaultx-dashboard
+    runtime: node
+    buildCommand: npm install
+    startCommand: node src/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_MODE
+        value: dashboard
+      - key: PUBLIC_URL
+        value: https://vaultx-dashboard.onrender.com
+      - key: DASHBOARD_REDIRECT_URI
+        value: https://vaultx-dashboard.onrender.com/auth/callback
+      - key: ACTIVITY_URL
+        value: https://vaultx-activity.onrender.com
+      - key: CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_USER_ID
+        sync: false
+      - key: OWNER_USER_IDS
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
+    disk:
+      name: vaultx-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+
+  - type: web
+    name: vaultx-activity
+    runtime: node
+    buildCommand: npm install && npm --prefix activity install && npm run activity:build
+    startCommand: node src/activityServerEntry.js
+    healthCheckPath: /activity-config.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_MODE
+        value: activity
+      - key: ACTIVITY_URL
+        value: https://vaultx-activity.onrender.com
+      - key: CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false

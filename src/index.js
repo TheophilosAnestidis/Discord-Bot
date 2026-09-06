@@ -951,9 +951,14 @@ async function start() {
             process.env.BOT_TOKEN
         );
 
-        startDashboard(client);
-        startActivityServer();
-        startTicketAutoClose();
+        const serviceMode = process.env.SERVICE_MODE || "all";
+        if (serviceMode === "all" || serviceMode === "dashboard") {
+            startDashboard(client);
+            startTicketAutoClose();
+        }
+        if (serviceMode === "all" || serviceMode === "activity") {
+            startActivityServer();
+        }
 
     } catch (error) {
 
