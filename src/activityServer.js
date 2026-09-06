@@ -250,18 +250,35 @@ export function startActivityServer() {
   registerActivityRoutes(app);
 
   const dist = path.resolve(process.cwd(), "activity", "dist");
+
+  // Activity API/config routes MUST be registered before the SPA catch-all.
+  registerActivityRoutes(app);
+
   if (fs.existsSync(path.join(dist, "index.html"))) {
     app.use(express.static(dist, { index: "index.html", maxAge: "1h" }));
-    app.get("*splat", (_req, res) => res.sendFile(path.join(dist, "index.html")));
+
+    app.get("*splat", (_req, res) => {
+      res.sendFile(path.join(dist, "index.html"));
+    });
   } else {
     app.get("/", (_req, res) =>
-      res.status(503).send("VaultX Activity is not built. Run: npm run activity:install && npm run activity:build")
+      res.status(503).send(
+        "VaultX Activity is not built. Run: npm run activity:install && npm run activity:build"
+      )
     );
   }
 
+<<<<<<< HEAD
   const port = Number(process.env.ACTIVITY_PORT || 5173);
   const server = app.listen(port, () => {
     console.log(`🎮 VaultX Activity listening on http://localhost:${port}`);
+=======
+  const port = Number(process.env.PORT || process.env.ACTIVITY_PORT || 5173);
+
+  const server = app.listen(port, "0.0.0.0", () => {
+    console.log(`🎮 VaultX Activity listening on port ${port}`);
+>>>>>>> ba0011298563e025ce890f62453f072c4de6ccfe
   });
+
   return server;
 }

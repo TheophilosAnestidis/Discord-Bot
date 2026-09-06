@@ -871,7 +871,7 @@ process.on(
 
         console.error(
             "❌ Uncaught exception:",
-        error
+            error
         );
 
     }
@@ -891,8 +891,8 @@ function startTicketAutoClose() {
             try {
                 await channel.send({ content: `〢 **Ticket auto-closed**\n> No activity for ${hours}h.` });
                 updateTicketRecord(ticket.channel_id, { status: "closed", closed_at: Date.now() });
-                await channel.setArchived?.(true).catch(() => {});
-                await channel.delete("VaultX automatic ticket closure").catch(() => {});
+                await channel.setArchived?.(true).catch(() => { });
+                await channel.delete("VaultX automatic ticket closure").catch(() => { });
             } catch (error) { console.warn("Auto-close failed:", error.message); }
         }
     };
