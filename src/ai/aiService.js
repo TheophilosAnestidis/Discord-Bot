@@ -1610,6 +1610,11 @@ ${currentMessage}
             error?.code
         );
 
+        console.error(
+            "Response:",
+            error?.response?.data || error?.error || error?.message
+        );
+
 
         return {
 
