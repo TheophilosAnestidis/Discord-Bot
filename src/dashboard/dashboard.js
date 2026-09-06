@@ -846,11 +846,98 @@ export function startDashboard(client) {
         const responseTimes = all.filter(ticket => ticket.last_staff_message_at && ticket.created_at)
             .map(ticket => ticket.last_staff_message_at - ticket.created_at).filter(value => value >= 0);
         const avgFirstResponseMs = responseTimes.length ? responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length : 0;
+        const now = Date.now();
+        const dayMs = 24 * 60 * 60 * 1000;
+        const trend = Array.from({ length: 7 }, (_, index) => {
+            const start = now - (6 - index) * dayMs;
+            const end = start + dayMs;
+            const day = new Date(start);
+            return {
+                label: day.toLocaleDateString("en-US", { weekday: "short" }),
+                opened: all.filter(ticket => ticket.created_at >= start && ticket.created_at < end).length,
+                closed: all.filter(ticket => ticket.closed_at >= start && ticket.closed_at < end).length
+            };
+        });
+        const typeCounts = all.reduce((counts, ticket) => {
+            counts[ticket.type || "general"] = (counts[ticket.type || "general"] || 0) + 1;
+            return counts;
+        }, {});
+        const topTypes = Object.entries(typeCounts)
+            .sort(([, first], [, second]) => second - first)
+            .slice(0, 4)
+            .map(([type, count]) => ({ type, count }));
 
         return response.json({
             total: all.length, open: open.length, claimed: claimed.length, urgent: urgent.length, closed: closed.length,
-            avgFirstResponseMs, resources: { roles: guild.roles.cache.size, channels: guild.channels.cache.size, members: guild.memberCount }
+            avgFirstResponseMs,
+            resolutionRate: all.length ? Math.round((closed.length / all.length) * 100) : 0,
+            trend,
+            topTypes,
+            resources: { roles: guild.roles.cache.size, channels: guild.channels.cache.size, members: guild.memberCount }
         });
+    });
+
+    app.get("/api/guilds/:guildId/tickets/:ticketId/messages", requireSession, async (request, response) => {
+        const guild = getGuildForAdmin(client, request.dashboardSession, request.params.guildId);
+        if (!guild) return response.status(403).json({ error: "Guild access denied." });
+        const premiumError = requireGuildPremium(request, response, guild.id, "tickets");
+        if (premiumError) return premiumError;
+
+        const ticket = getTicketsForGuild(guild.id)
+            .find(item => String(item.id) === String(request.params.ticketId));
+        if (!ticket) return response.status(404).json({ error: "Ticket not found." });
+
+        const channel = guild.channels.cache.get(ticket.channel_id);
+        if (!channel?.isTextBased?.()) return response.status(404).json({ error: "Ticket channel is unavailable." });
+
+        try {
+            const messages = await channel.messages.fetch({ limit: 50 });
+            return response.json({ messages: [...messages.values()].reverse().map(message => ({
+                id: message.id,
+                author: message.author?.globalName || message.author?.username || "Unknown",
+                authorId: message.author?.id || null,
+                bot: Boolean(message.author?.bot),
+                content: message.content || "",
+                timestamp: message.createdTimestamp,
+                attachments: [...message.attachments.values()].map(file => ({ name: file.name, url: file.url }))
+            })) });
+        } catch (error) {
+            console.error("Failed to fetch ticket messages:", error);
+            return response.status(502).json({ error: "Could not load ticket messages." });
+        }
+    });
+
+    app.post("/api/guilds/:guildId/tickets/:ticketId/messages", requireSession, async (request, response) => {
+        const guild = getGuildForAdmin(client, request.dashboardSession, request.params.guildId);
+        if (!guild) return response.status(403).json({ error: "Guild access denied." });
+        const premiumError = requireGuildPremium(request, response, guild.id, "tickets");
+        if (premiumError) return premiumError;
+
+        const content = String(request.body?.content || "").trim();
+        if (!content || content.length > 2000) return response.status(400).json({ error: "Message must contain 1-2000 characters." });
+
+        const ticket = getTicketsForGuild(guild.id)
+            .find(item => String(item.id) === String(request.params.ticketId));
+        if (!ticket) return response.status(404).json({ error: "Ticket not found." });
+        const channel = guild.channels.cache.get(ticket.channel_id);
+        if (!channel?.isTextBased?.()) return response.status(404).json({ error: "Ticket channel is unavailable." });
+
+        try {
+            const message = await channel.send({ content, allowedMentions: { parse: [] } });
+            updateTicketRecord(channel.id, { last_staff_message_at: Date.now() });
+            return response.json({ ok: true, message: {
+                id: message.id,
+                author: message.author?.globalName || message.author?.username || "VaultX",
+                authorId: message.author?.id || null,
+                bot: Boolean(message.author?.bot),
+                content: message.content || content,
+                timestamp: message.createdTimestamp,
+                attachments: []
+            } });
+        } catch (error) {
+            console.error("Failed to send dashboard ticket message:", error);
+            return response.status(502).json({ error: "Could not send ticket message." });
+        }
     });
 
     app.put("/api/guilds/:guildId/settings", requireSession, (request, response) => {
