@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@discord/embedded-app-sdk": "^2.5.0",
-    "ai-bot": "file:.."
+    "ai-bot": "file:..",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "vite": "^7.1.3"

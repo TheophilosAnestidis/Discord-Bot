@@ -1,4 +1,5 @@
 import { DiscordSDK } from '@discord/embedded-app-sdk';
+import * as THREE from 'three';
 import './style.css';
 
 const app = document.querySelector('#app');
@@ -129,15 +130,15 @@ function renderShooter() {
       <header class="topbar">
         <div>
           <div class="brand">VAULT<span>X</span></div>
-          <div class="subtitle">CHAOS ARENA</div>
+          <div class="subtitle">3D BATTLE ARENA</div>
         </div>
         <div class="header-actions">
-          <div class="round">OFFICE PANIC</div>
+          <div class="round">MULTIPLAYER</div>
           <button class="secondary" data-mode="menu">Hub</button>
         </div>
       </header>
       <section class="shooter-panel">
-        <canvas id="arenaCanvas" width="860" height="520"></canvas>
+        <canvas id="arenaCanvas"></canvas>
       </section>
     </main>
   `;
@@ -149,7 +150,7 @@ function renderShooter() {
   };
 
   const canvas = document.querySelector('#arenaCanvas');
-  initShooterGame(canvas);
+  initArena3DGame(canvas);
 }
 
 function escapeHtml(value) {
@@ -183,10 +184,11 @@ function setupShooterInput() {
 
 function stopShooterGame() {
   if (shooterGame?.rafId) cancelAnimationFrame(shooterGame.rafId);
+  if (shooterGame?.renderer) shooterGame.renderer.dispose();
   shooterGame = null;
 }
 
-function initShooterGame(canvas) {
+function initArena3DGame(canvas) {
   if (!canvas) return;
 
   if (!window.__vaultxShooterListenersAttached) {
@@ -194,413 +196,262 @@ function initShooterGame(canvas) {
     window.__vaultxShooterListenersAttached = true;
   }
 
-  const ctx = canvas.getContext('2d');
-  const bestScore = Number(localStorage.getItem('vaultx-chaos-best') || '0');
-  const chaosNames = ['Karen', 'Zoom Bot', 'Spam', 'CEO', 'Intern', 'Gamer', 'Panic', 'Meme'];
-  const game = {
-    canvas,
-    ctx,
-    bestScore,
-    score: 0,
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#070d18');
+  scene.fog = new THREE.Fog('#070d18', 18, 36);
+
+  const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight || 1.6, 0.1, 1000);
+  camera.position.set(0, 10, 16);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(canvas.clientWidth || 860, canvas.clientHeight || 520, false);
+
+  const ambient = new THREE.HemisphereLight('#b7d8ff', '#111827', 1.2);
+  scene.add(ambient);
+
+  const dirLight = new THREE.DirectionalLight('#d8e3ff', 1.1);
+  dirLight.position.set(8, 12, 8);
+  scene.add(dirLight);
+
+  const arena = new THREE.Mesh(
+    new THREE.CylinderGeometry(12, 12, 0.8, 48),
+    new THREE.MeshStandardMaterial({ color: '#111a2b', metalness: 0.35, roughness: 0.7 })
+  );
+  arena.position.y = -0.8;
+  scene.add(arena);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(12.2, 0.15, 16, 80),
+    new THREE.MeshStandardMaterial({ color: '#7f8dff', emissive: '#2b2d4d' })
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.1;
+  scene.add(ring);
+
+  const pointerPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const pointer = new THREE.Vector3();
+  const raycaster = new THREE.Raycaster();
+  const playerMeshes = new Map();
+  const bulletMeshes = new Map();
+
+  const localState = {
+    x: 0,
+    z: 0,
     health: 100,
-    wave: 1,
-    over: false,
-    lastTime: 0,
-    spawnTimer: 0,
-    bullets: [],
-    enemies: [],
-    pickups: [],
-    particles: [],
-    shootCooldown: 0,
-    message: 'The office is barely holding together.',
-    player: {
-      x: canvas.width / 2,
-      y: canvas.height - 42,
-      radius: 19,
-      speed: 5,
-      color: '#7af0ff'
-    }
+    score: 0,
+    facing: 0,
+    lastShotAt: 0
   };
 
-  const pointerPosition = (event) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * canvas.width;
-    const y = ((event.clientY - rect.top) / rect.height) * canvas.height;
-    shooterPointer.x = x;
-    shooterPointer.y = y;
-  };
+  function createPlayerMesh(player) {
+    const group = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CapsuleGeometry(0.8, 1.5, 6, 12),
+      new THREE.MeshStandardMaterial({ color: player.id === self?.id ? '#79e4ff' : '#ff7c7c', emissive: '#0d1b2a' })
+    );
+    body.castShadow = true;
+    group.add(body);
 
-  canvas.addEventListener('mousemove', pointerPosition);
-  canvas.addEventListener('mousedown', (event) => {
-    pointerPosition(event);
-    shooterPointer.down = true;
-  });
-  window.addEventListener('mouseup', () => {
-    shooterPointer.down = false;
-  });
+    const gun = new THREE.Mesh(
+      new THREE.BoxGeometry(0.3, 0.25, 1.0),
+      new THREE.MeshStandardMaterial({ color: '#1a1d2a' })
+    );
+    gun.position.set(0.65, 0.1, 0.4);
+    group.add(gun);
 
-  function reset() {
-    game.score = 0;
-    game.health = 100;
-    game.wave = 1;
-    game.over = false;
-    game.message = 'The office is barely holding together.';
-    game.spawnTimer = 0.8;
-    game.bullets = [];
-    game.enemies = [];
-    game.pickups = [];
-    game.particles = [];
-    game.shootCooldown = 0;
-    game.player.x = canvas.width / 2;
-    game.player.y = canvas.height - 42;
+    const label = document.createElement('div');
+    label.textContent = player.username || 'Player';
+    label.style.position = 'absolute';
+    label.style.pointerEvents = 'none';
+    label.style.color = '#eaf3ff';
+    label.style.font = '12px sans-serif';
+    label.style.background = 'rgba(9, 14, 24, 0.7)';
+    label.style.padding = '3px 6px';
+    label.style.borderRadius = '999px';
+    label.style.transform = 'translate(-50%, -50%)';
+    label.style.whiteSpace = 'nowrap';
+    label.style.display = 'none';
+    canvas.parentElement.appendChild(label);
+
+    group.userData.label = label;
+    scene.add(group);
+    return group;
   }
 
-  function fireBullet() {
-    if (game.over) return;
-    const dirX = shooterPointer.x - game.player.x;
-    const dirY = shooterPointer.y - game.player.y;
-    const angle = Math.atan2(dirY, dirX) || -Math.PI / 2;
-    const speed = 12;
-    game.bullets.push({
-      x: game.player.x + Math.cos(angle) * 18,
-      y: game.player.y + Math.sin(angle) * 18,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      radius: 5,
-      color: '#ffd166'
-    });
-  }
+  function syncArenaScene(arenaState) {
+    if (!arenaState) return;
 
-  function spawnEnemy() {
-    const radius = 12 + Math.random() * 18;
-    const x = 40 + Math.random() * (canvas.width - 80);
-    const y = -radius - 20;
-    const drift = (Math.random() - 0.5) * 2.2;
-    const name = chaosNames[Math.floor(Math.random() * chaosNames.length)];
-    const hue = 180 + Math.random() * 120;
-    game.enemies.push({
-      x,
-      y,
-      radius,
-      drift,
-      speed: 1 + Math.random() * 1.7 + game.wave * 0.15,
-      shootCooldown: 1 + Math.random() * 1.5,
-      color: `hsl(${hue}, 85%, 65%)`,
-      name,
-      hp: 1 + Math.floor((game.wave - 1) / 3)
-    });
-  }
+    const players = arenaState.players || [];
+    const bulletList = arenaState.bullets || [];
 
-  function spawnPickup() {
-    const pick = ['☕', '🧁', '📎', '🧠', '💣'];
-    game.pickups.push({
-      x: 30 + Math.random() * (canvas.width - 60),
-      y: -20,
-      radius: 12,
-      emoji: pick[Math.floor(Math.random() * pick.length)],
-      vy: 2.4 + Math.random() * 1.2,
-      kind: Math.random() > 0.55 ? 'boost' : 'heal'
-    });
-  }
+    for (const player of players) {
+      let mesh = playerMeshes.get(player.id);
+      if (!mesh) {
+        mesh = createPlayerMesh(player);
+        playerMeshes.set(player.id, mesh);
+      }
+      mesh.position.set(player.x, 0.9, player.z);
+      mesh.rotation.y = player.facing || 0;
+      mesh.scale.setScalar(player.id === self?.id ? 1.15 : 1);
+      mesh.children[0].material.color.set(player.id === self?.id ? '#79e4ff' : '#ff7c7c');
+      if (mesh.userData.label) {
+        mesh.userData.label.textContent = `${player.username || 'Player'} • ${player.health}%`;
+        const screen = new THREE.Vector3(player.x, 1.8, player.z).project(camera);
+        const x = (screen.x * 0.5 + 0.5) * canvas.clientWidth;
+        const y = (-screen.y * 0.5 + 0.5) * canvas.clientHeight;
+        mesh.userData.label.style.left = `${x}px`;
+        mesh.userData.label.style.top = `${y}px`;
+        mesh.userData.label.style.display = 'block';
+      }
+    }
 
-  function createBurst(x, y, color, count = 10) {
-    for (let i = 0; i < count; i += 1) {
-      game.particles.push({
-        x,
-        y,
-        vx: (Math.random() - 0.5) * 5,
-        vy: (Math.random() - 0.5) * 5,
-        life: 18 + Math.random() * 20,
-        radius: 2 + Math.random() * 4,
-        color
-      });
+    for (const [id, mesh] of playerMeshes) {
+      if (!players.some((player) => player.id === id)) {
+        if (mesh.userData.label) mesh.userData.label.remove();
+        scene.remove(mesh);
+        playerMeshes.delete(id);
+      }
+    }
+
+    for (const bullet of bulletList) {
+      const key = `${bullet.from}-${Math.round(bullet.x * 1000)}-${Math.round(bullet.z * 1000)}`;
+      let mesh = bulletMeshes.get(key);
+      if (!mesh) {
+        mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.25, 12, 12),
+          new THREE.MeshStandardMaterial({ color: '#ffd166', emissive: '#533d00' })
+        );
+        scene.add(mesh);
+        bulletMeshes.set(key, mesh);
+      }
+      mesh.position.set(bullet.x, 0.7, bullet.z);
+    }
+
+    for (const [key, mesh] of bulletMeshes) {
+      const exists = bulletList.some((bullet) => `${bullet.from}-${Math.round(bullet.x * 1000)}-${Math.round(bullet.z * 1000)}` === key);
+      if (!exists) {
+        scene.remove(mesh);
+        bulletMeshes.delete(key);
+      }
     }
   }
 
-  function updateParticles() {
-    for (const particle of game.particles) {
-      particle.x += particle.vx;
-      particle.y += particle.vy;
-      particle.life -= 1;
-    }
-    game.particles = game.particles.filter((particle) => particle.life > 0);
-  }
-
-  function maybeChangeMessage() {
-    const lines = [
-      'The printer is on fire again.',
-      'Someone brought a flaming burrito to the meeting.',
-      'A rogue mascot is stealing snacks.',
-      'Your boss is screaming in 4K.',
-      'This is not a workplace incident. It is a lifestyle.',
-      'The coffee machine has become a weapon.'
-    ];
-    if (Math.random() < 0.015) {
-      game.message = lines[Math.floor(Math.random() * lines.length)];
-    }
-  }
-
-  function update(delta) {
-    const player = game.player;
-    const moveX = (shooterKeys.right ? 1 : 0) - (shooterKeys.left ? 1 : 0);
-    const moveY = (shooterKeys.down ? 1 : 0) - (shooterKeys.up ? 1 : 0);
-    const length = Math.hypot(moveX, moveY) || 1;
-
-    player.x += (moveX / length) * player.speed * delta;
-    player.y += (moveY / length) * player.speed * delta;
-    player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
-    player.y = Math.max(player.radius + 20, Math.min(canvas.height - player.radius, player.y));
-
-    game.shootCooldown = Math.max(0, game.shootCooldown - delta * 0.8);
-    const firing = shooterPointer.down || shooterKeys.fire;
-    if (firing && game.shootCooldown <= 0) {
-      fireBullet();
-      game.shootCooldown = 0.18;
-    }
-
-    if (game.over) {
+  function sendArenaState() {
+    if (!self?.id || !state?.arena) return;
+    const localPlayer = state.arena.players.find((player) => player.id === self.id);
+    if (!localPlayer) {
+      action('arena_join');
       return;
     }
 
-    maybeChangeMessage();
-    game.spawnTimer -= delta / 60;
-    if (game.spawnTimer <= 0) {
-      spawnEnemy();
-      if (Math.random() < 0.25) spawnPickup();
-      game.spawnTimer = Math.max(0.38, 1.2 - game.wave * 0.08);
-    }
-
-    for (let i = game.bullets.length - 1; i >= 0; i -= 1) {
-      const bullet = game.bullets[i];
-      bullet.x += bullet.vx * delta;
-      bullet.y += bullet.vy * delta;
-      if (bullet.y < -20 || bullet.y > canvas.height + 20 || bullet.x < -20 || bullet.x > canvas.width + 20) {
-        game.bullets.splice(i, 1);
-      }
-    }
-
-    for (let i = game.enemies.length - 1; i >= 0; i -= 1) {
-      const enemy = game.enemies[i];
-      enemy.y += enemy.speed * delta;
-      enemy.x += enemy.drift * delta;
-      enemy.shootCooldown -= delta / 60;
-
-      if (enemy.x < 18 || enemy.x > canvas.width - 18) enemy.drift *= -1;
-
-      if (enemy.shootCooldown <= 0 && Math.random() < 0.9) {
-        const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-        const bulletSpeed = 3 + game.wave * 0.2;
-        const prank = { x: enemy.x, y: enemy.y, vx: Math.cos(angle) * bulletSpeed, vy: Math.sin(angle) * bulletSpeed, radius: 5, color: '#ff6b6b' };
-        game.bullets.push({ ...prank, fromEnemy: true });
-        enemy.shootCooldown = 1.1 + Math.random() * 1.7;
-      }
-
-      if (enemy.y > canvas.height + 24) {
-        game.enemies.splice(i, 1);
-        game.health = Math.max(0, game.health - 8);
-        createBurst(enemy.x, enemy.y, '#ff7b72', 12);
-        continue;
-      }
-
-      for (let b = game.bullets.length - 1; b >= 0; b -= 1) {
-        const bullet = game.bullets[b];
-        if (bullet.fromEnemy) continue;
-        const dist = Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y);
-        if (dist <= enemy.radius + bullet.radius) {
-          game.bullets.splice(b, 1);
-          enemy.hp -= 1;
-          createBurst(bullet.x, bullet.y, '#ffee8c', 8);
-          if (enemy.hp <= 0) {
-            game.enemies.splice(i, 1);
-            game.score += 25 + game.wave * 5;
-            createBurst(enemy.x, enemy.y, enemy.color, 15);
-            if (Math.random() < 0.26) {
-              game.pickups.push({ x: enemy.x, y: enemy.y, radius: 10, emoji: '✨', vy: 2.2, kind: 'boost' });
-            }
-          }
-          break;
-        }
-      }
-    }
-
-    for (let i = game.bullets.length - 1; i >= 0; i -= 1) {
-      const bullet = game.bullets[i];
-      if (bullet.fromEnemy) {
-        bullet.x += bullet.vx * delta;
-        bullet.y += bullet.vy * delta;
-        const dist = Math.hypot(player.x - bullet.x, player.y - bullet.y);
-        if (dist <= player.radius + bullet.radius) {
-          game.bullets.splice(i, 1);
-          game.health = Math.max(0, game.health - 12);
-          createBurst(bullet.x, bullet.y, '#ff5d7a', 12);
-        }
-      }
-    }
-
-    for (let i = game.pickups.length - 1; i >= 0; i -= 1) {
-      const pickup = game.pickups[i];
-      pickup.y += pickup.vy * delta;
-      const dist = Math.hypot(player.x - pickup.x, player.y - pickup.y);
-      if (dist <= player.radius + pickup.radius) {
-        game.pickups.splice(i, 1);
-        if (pickup.kind === 'heal') {
-          game.health = Math.min(100, game.health + 18);
-          game.message = 'Coffee rescue! You are alive for another minute.';
-        } else {
-          game.score += 50;
-          game.message = 'Snack bonus! Chaos has a price.';
-        }
-        createBurst(pickup.x, pickup.y, '#9b6cff', 18);
-        continue;
-      }
-      if (pickup.y > canvas.height + 20) game.pickups.splice(i, 1);
-    }
-
-    game.wave = 1 + Math.floor(game.score / 180);
-
-    if (game.health <= 0) {
-      game.over = true;
-      game.bestScore = Math.max(game.bestScore, game.score);
-      localStorage.setItem('vaultx-chaos-best', String(game.bestScore));
-      game.message = 'The office won. Try again with more rage and snacks.';
-    }
-
-    updateParticles();
+    const x = THREE.MathUtils.clamp(localState.x, -11.5, 11.5);
+    const z = THREE.MathUtils.clamp(localState.z, -11.5, 11.5);
+    const payload = {
+      x,
+      z,
+      facing: localState.facing,
+      health: localState.health,
+      score: localState.score,
+      kills: localState.kills || 0
+    };
+    action('arena_update', payload);
   }
 
-  function drawBackground() {
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    gradient.addColorStop(0, '#090c14');
-    gradient.addColorStop(1, '#111725');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    for (let x = 0; x < canvas.width; x += 36) {
-      ctx.strokeStyle = 'rgba(144, 184, 255, 0.12)';
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-    for (let y = 0; y < canvas.height; y += 36) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
+  function setPointerFromMouse(event) {
+    const rect = canvas.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+    raycaster.setFromCamera(mouse, camera);
+    const hit = raycaster.ray.intersectPlane(pointerPlane, pointer);
+    if (hit) {
+      const dx = pointer.x - (localState.x || 0);
+      const dz = pointer.z - (localState.z || 0);
+      localState.facing = Math.atan2(dz, dx);
+      shooterPointer.x = pointer.x;
+      shooterPointer.y = pointer.z;
     }
   }
 
-  function draw() {
-    drawBackground();
-
-    for (const pickup of game.pickups) {
-      ctx.font = '18px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(pickup.emoji, pickup.x, pickup.y + 6);
+  canvas.addEventListener('mousemove', setPointerFromMouse);
+  canvas.addEventListener('mousedown', (event) => {
+    setPointerFromMouse(event);
+    const now = Date.now();
+    if (now - localState.lastShotAt > 180) {
+      localState.lastShotAt = now;
+      const payload = {
+        x: localState.x,
+        z: localState.z,
+        facing: localState.facing,
+        origin: self?.id || 'local'
+      };
+      action('arena_shoot', payload);
     }
-
-    for (const bullet of game.bullets) {
-      if (bullet.fromEnemy) {
-        ctx.fillStyle = '#ff6b6b';
-      } else {
-        ctx.fillStyle = '#ffd166';
-      }
-      ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    for (const enemy of game.enemies) {
-      ctx.fillStyle = enemy.color;
-      ctx.beginPath();
-      ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#f6f7fb';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(enemy.name, enemy.x, enemy.y + 4);
-    }
-
-    for (const particle of game.particles) {
-      ctx.fillStyle = particle.color;
-      ctx.globalAlpha = Math.max(0, particle.life / 40);
-      ctx.fillRect(particle.x, particle.y, particle.radius * 2, particle.radius * 2);
-      ctx.globalAlpha = 1;
-    }
-
-    const player = game.player;
-    ctx.save();
-    ctx.translate(player.x, player.y);
-    ctx.fillStyle = '#7af0ff';
-    ctx.beginPath();
-    ctx.moveTo(0, -18);
-    ctx.lineTo(18, 16);
-    ctx.lineTo(0, 8);
-    ctx.lineTo(-18, 16);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
-    const angle = Math.atan2(shooterPointer.y - player.y, shooterPointer.x - player.x);
-    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-    ctx.beginPath();
-    ctx.moveTo(player.x, player.y);
-    ctx.lineTo(player.x + Math.cos(angle) * 28, player.y + Math.sin(angle) * 28);
-    ctx.stroke();
-
-    ctx.fillStyle = '#eef3ff';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(`Score: ${game.score}`, 18, 30);
-    ctx.fillText(`Best: ${game.bestScore}`, 18, 58);
-    ctx.fillText(`Mood: ${game.health}%`, 18, 86);
-    ctx.fillText(`Wave ${game.wave}`, canvas.width - 110, 30);
-
-    ctx.fillStyle = '#d7e6ff';
-    ctx.font = '14px sans-serif';
-    ctx.fillText(game.message, 18, canvas.height - 18);
-
-    if (game.over) {
-      ctx.fillStyle = 'rgba(7, 9, 18, 0.72)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 42px sans-serif';
-      ctx.fillText('Office apocalypse', canvas.width / 2, canvas.height / 2 - 10);
-      ctx.font = '20px sans-serif';
-      ctx.fillText(`Final score: ${game.score}`, canvas.width / 2, canvas.height / 2 + 28);
-      ctx.fillText('Restart and try to save the meeting.', canvas.width / 2, canvas.height / 2 + 58);
-      ctx.textAlign = 'left';
-
-      const restartButton = document.querySelector('#restartShooter');
-      if (restartButton) restartButton.style.display = 'inline-flex';
-    } else {
-      const restartButton = document.querySelector('#restartShooter');
-      if (restartButton) restartButton.style.display = 'none';
-    }
-  }
-
-  function frame(time) {
-    const delta = Math.min(2, (time - game.lastTime || 16) / 16.667);
-    game.lastTime = time;
-    update(delta);
-    draw();
-    shooterGame.rafId = requestAnimationFrame(frame);
-  }
-
-  reset();
-  shooterGame = { ...game, reset, rafId: 0 };
-
-  const hud = document.createElement('div');
-  hud.className = 'shooter-hud';
-  hud.innerHTML = '<button id="restartShooter" class="primary">Restart</button>';
-  canvas.insertAdjacentElement('afterend', hud);
-  document.querySelector('#restartShooter').addEventListener('click', () => {
-    shooterGame.reset();
-    shooterGame.over = false;
   });
 
-  shooterGame.rafId = requestAnimationFrame(frame);
+  function animate() {
+    const moveX = (shooterKeys.right ? 1 : 0) - (shooterKeys.left ? 1 : 0);
+    const moveZ = (shooterKeys.down ? 1 : 0) - (shooterKeys.up ? 1 : 0);
+    const length = Math.hypot(moveX, moveZ) || 1;
+
+    const speed = 0.18;
+    if (moveX || moveZ) {
+      const dirX = moveX / length;
+      const dirZ = moveZ / length;
+      localState.x = THREE.MathUtils.clamp((localState.x || 0) + dirX * speed, -11.5, 11.5);
+      localState.z = THREE.MathUtils.clamp((localState.z || 0) + dirZ * speed, -11.5, 11.5);
+    }
+
+    const localPlayer = state?.arena?.players?.find((player) => player.id === self?.id);
+    if (localPlayer) {
+      localState.x = localPlayer.x;
+      localState.z = localPlayer.z;
+      localState.health = localPlayer.health;
+      localState.score = localPlayer.score;
+      localState.kills = localPlayer.kills || 0;
+    }
+
+    const player = playerMeshes.get(self?.id);
+    if (player) {
+      player.position.set(localState.x, 0.9, localState.z);
+      player.rotation.y = localState.facing || 0;
+    } else {
+      const base = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.8, 1.5, 6, 12),
+        new THREE.MeshStandardMaterial({ color: '#79e4ff' })
+      );
+      base.position.set(localState.x, 0.9, localState.z);
+      scene.add(base);
+      playerMeshes.set(self?.id, base);
+    }
+
+    camera.position.x = localState.x * 0.7;
+    camera.position.z = 16 + (localPlayer ? 0 : 0);
+    camera.position.y = 10;
+    camera.lookAt(localState.x, 0.8, localState.z);
+
+    if (state?.arena) syncArenaScene(state.arena);
+    if (self?.id && state?.arena && Date.now() - (shooterGame?.lastSync || 0) > 120) {
+      sendArenaState();
+      shooterGame.lastSync = Date.now();
+    }
+
+    renderer.render(scene, camera);
+    shooterGame.rafId = requestAnimationFrame(animate);
+  }
+
+  shooterGame = {
+    rafId: 0,
+    lastSync: 0,
+    renderer,
+    scene,
+    camera
+  };
+
+  if (state?.arena) syncArenaScene(state.arena);
+  shooterGame.rafId = requestAnimationFrame(animate);
 }
 
 async function setupDiscord() {

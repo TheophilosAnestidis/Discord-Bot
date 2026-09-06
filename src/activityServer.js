@@ -26,6 +26,11 @@ function getInstance(instanceId) {
     activityInstances.set(instanceId, {
       instanceId,
       players: new Map(),
+      arena: {
+        players: new Map(),
+        bullets: [],
+        nextTick: Date.now()
+      },
       phase: 'lobby',
       round: 0,
       deadline: 0,
@@ -34,6 +39,7 @@ function getInstance(instanceId) {
       createdAt: Date.now()
     });
   }
+
   return activityInstances.get(instanceId);
 }
 
@@ -45,20 +51,94 @@ function sanitizeUser(user) {
   };
 }
 
+function ensureArenaPlayer(instance, userId, user) {
+  if (!instance.arena) {
+    instance.arena = { players: new Map(), bullets: [], nextTick: Date.now() };
+  }
+
+  if (!instance.arena.players.has(userId)) {
+    instance.arena.players.set(userId, {
+      id: userId,
+      username: user.username || 'Player',
+      x: 0,
+      z: 0,
+      facing: 0,
+      health: 100,
+      score: 0,
+      kills: 0
+    });
+  }
+
+  return instance.arena.players.get(userId);
+}
+
+function stepArena(instance) {
+  if (!instance.arena) return;
+
+  const arena = instance.arena;
+
+  for (let i = arena.bullets.length - 1; i >= 0; i -= 1) {
+    const bullet = arena.bullets[i];
+    bullet.x += bullet.vx;
+    bullet.z += bullet.vz;
+
+    if (Math.abs(bullet.x) > 12 || Math.abs(bullet.z) > 12) {
+      arena.bullets.splice(i, 1);
+      continue;
+    }
+
+    for (const other of arena.players.values()) {
+      if (other.id === bullet.from) continue;
+      const dist = Math.hypot(bullet.x - other.x, bullet.z - other.z);
+      if (dist <= 1.2) {
+        const shooter = arena.players.get(bullet.from);
+        other.health = Math.max(0, Number(other.health || 100) - 15);
+        if (shooter) shooter.score = Number(shooter.score || 0) + 25;
+
+        if (other.health <= 0) {
+          if (shooter) shooter.kills = Number(shooter.kills || 0) + 1;
+          other.x = 0;
+          other.z = 0;
+          other.health = 100;
+          other.facing = 0;
+        }
+
+        arena.bullets.splice(i, 1);
+        break;
+      }
+    }
+  }
+}
+
 function serialize(instance) {
   const question = QUESTIONS[instance.round] || QUESTIONS[0];
+  const arenaPlayers = [...(instance.arena?.players?.values?.() || [])].map((player) => ({
+    id: player.id,
+    username: player.username,
+    x: Number(player.x || 0),
+    z: Number(player.z || 0),
+    facing: Number(player.facing || 0),
+    health: Number(player.health || 100),
+    score: Number(player.score || 0),
+    kills: Number(player.kills || 0)
+  }));
+
   return {
     phase: instance.phase,
     round: instance.round,
     totalRounds: QUESTIONS.length,
     deadline: instance.deadline,
     question: instance.phase === 'playing' ? { q: question.q, a: question.a } : null,
-    players: [...instance.players.values()].map(player => ({
+    players: [...instance.players.values()].map((player) => ({
       ...player.user,
       score: player.score,
       host: Boolean(player.host),
       answered: instance.answers.has(player.user.id)
     })),
+    arena: {
+      players: arenaPlayers,
+      bullets: [...(instance.arena?.bullets || [])]
+    },
     lastWinner: instance.lastWinner,
     serverTime: Date.now()
   };
@@ -88,6 +168,21 @@ function jsonError(response, status, message) {
   return response.status(status).json({ ok: false, error: message });
 }
 
+function advanceRound(instance) {
+  const ranked = [...instance.players.values()].sort((a, b) => b.score - a.score);
+  instance.lastWinner = ranked[0]?.user?.username || null;
+
+  if (instance.round >= QUESTIONS.length - 1) {
+    instance.phase = 'finished';
+    instance.deadline = 0;
+    return;
+  }
+
+  instance.round += 1;
+  instance.answers = new Map();
+  instance.deadline = Date.now() + ROUND_MS;
+}
+
 export function registerActivityRoutes(app) {
   app.get('/activity-config.js', (_request, response) => {
     response.type('application/javascript').send(
@@ -103,9 +198,6 @@ export function registerActivityRoutes(app) {
         return jsonError(response, 500, 'Activity OAuth is not configured.');
       }
 
-      // Discord Activities handle the redirect internally. The Embedded App SDK
-      // returns the authorization code to the Activity, which we exchange here.
-      // Keep the client secret server-side only.
       const body = new URLSearchParams({
         client_id: process.env.CLIENT_ID,
         client_secret: process.env.DISCORD_CLIENT_SECRET,
@@ -118,11 +210,13 @@ export function registerActivityRoutes(app) {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body
       });
+
       if (!tokenResponse.ok) return jsonError(response, 401, 'Discord authorization failed.');
 
       const tokenData = await tokenResponse.json();
       const user = await discordUser(tokenData.access_token);
       const sessionToken = crypto.randomBytes(32).toString('hex');
+
       activitySessions.set(sessionToken, {
         user: sanitizeUser(user),
         discordAccessToken: tokenData.access_token,
@@ -136,8 +230,6 @@ export function registerActivityRoutes(app) {
     }
   });
 
-  // Discord's Activity proxy uses the /.proxy prefix. Strip that prefix so
-  // the same Express handlers work both locally and inside Discord.
   app.use((request, _response, next) => {
     if (request.url.startsWith('/.proxy/api/activity')) {
       request.url = request.url.slice('/.proxy'.length);
@@ -150,10 +242,14 @@ export function registerActivityRoutes(app) {
       const session = requireSession(request);
       const instanceId = String(request.query.instanceId || '');
       if (!instanceId) return jsonError(response, 400, 'instanceId is required.');
+
       const instance = getInstance(instanceId);
+      ensureArenaPlayer(instance, session.user.id, session.user);
+
       if (!instance.players.has(session.user.id)) {
         instance.players.set(session.user.id, { user: session.user, score: 0, joinedAt: Date.now(), host: instance.players.size === 0 });
       }
+
       return response.json({ ok: true, self: session.user, state: serialize(instance) });
     } catch (error) {
       return jsonError(response, 401, error.message);
@@ -163,10 +259,50 @@ export function registerActivityRoutes(app) {
   app.post('/api/activity/action', (request, response) => {
     try {
       const session = requireSession(request);
-      const { instanceId, action, answer } = request.body || {};
+      const body = request.body || {};
+      const { instanceId, action, answer } = body;
+      const payload = body.answer && typeof body.answer === 'object' ? body.answer : body;
+
       if (!instanceId) return jsonError(response, 400, 'instanceId is required.');
+
       const instance = getInstance(String(instanceId));
       const userId = session.user.id;
+
+      if (!instance.arena) {
+        instance.arena = { players: new Map(), bullets: [], nextTick: Date.now() };
+      }
+
+      if (action === 'arena_join') {
+        const player = ensureArenaPlayer(instance, userId, session.user);
+        player.username = session.user.username;
+        return response.json({ ok: true, state: serialize(instance) });
+      }
+
+      if (action === 'arena_update') {
+        const player = ensureArenaPlayer(instance, userId, session.user);
+        player.x = Number(payload.x ?? player.x ?? 0);
+        player.z = Number(payload.z ?? player.z ?? 0);
+        player.facing = Number(payload.facing ?? player.facing ?? 0);
+        player.health = Number(payload.health ?? player.health ?? 100);
+        player.score = Number(payload.score ?? player.score ?? 0);
+        player.kills = Number(payload.kills ?? player.kills ?? 0);
+        return response.json({ ok: true, state: serialize(instance) });
+      }
+
+      if (action === 'arena_shoot') {
+        const player = ensureArenaPlayer(instance, userId, session.user);
+        const bullet = {
+          from: userId,
+          x: Number(payload.x ?? player.x ?? 0),
+          z: Number(payload.z ?? player.z ?? 0),
+          vx: Math.cos(Number(payload.facing ?? player.facing ?? 0)) * 0.35,
+          vz: Math.sin(Number(payload.facing ?? player.facing ?? 0)) * 0.35
+        };
+        instance.arena.bullets.push(bullet);
+        if (instance.arena.bullets.length > 200) instance.arena.bullets.shift();
+        return response.json({ ok: true, state: serialize(instance) });
+      }
+
       if (!instance.players.has(userId)) {
         if (instance.players.size >= MAX_PLAYERS) return jsonError(response, 409, `Lobby is full (${MAX_PLAYERS} players).`);
         instance.players.set(userId, { user: session.user, score: 0, joinedAt: Date.now(), host: instance.players.size === 0 });
@@ -197,7 +333,7 @@ export function registerActivityRoutes(app) {
           instance.players.get(userId).score += 500 + Math.round(remaining / 20);
         }
 
-        const everyoneAnswered = [...instance.players.keys()].every(id => instance.answers.has(id));
+        const everyoneAnswered = [...instance.players.keys()].every((id) => instance.answers.has(id));
         if (everyoneAnswered || Date.now() >= instance.deadline) advanceRound(instance);
       } else if (action === 'leave') {
         const leaving = instance.players.get(userId);
@@ -217,57 +353,42 @@ export function registerActivityRoutes(app) {
   });
 }
 
-function advanceRound(instance) {
-  const ranked = [...instance.players.values()].sort((a, b) => b.score - a.score);
-  instance.lastWinner = ranked[0]?.user?.username || null;
-  if (instance.round >= QUESTIONS.length - 1) {
-    instance.phase = 'finished';
-    instance.deadline = 0;
-    return;
-  }
-  instance.round += 1;
-  instance.answers = new Map();
-  instance.deadline = Date.now() + ROUND_MS;
-}
-
 setInterval(() => {
   const now = Date.now();
   for (const [token, session] of activitySessions) if (session.expiresAt < now) activitySessions.delete(token);
   for (const [id, instance] of activityInstances) {
     if (instance.phase === 'playing' && now >= instance.deadline) advanceRound(instance);
+    if (instance.arena) stepArena(instance);
     if (now - instance.createdAt > 6 * 60 * 60 * 1000) activityInstances.delete(id);
   }
-}, 1000).unref();
-
+}, 100).unref();
 
 export function startActivityServer() {
-  // Activity runs on its own origin/port so it can be deployed independently.
   const app = express();
-  app.disable("x-powered-by");
-  app.set("trust proxy", 1);
-  app.use(express.json({ limit: "32kb" }));
+  app.disable('x-powered-by');
+  app.set('trust proxy', 1);
+  app.use(express.json({ limit: '32kb' }));
 
   registerActivityRoutes(app);
 
-  const dist = path.resolve(process.cwd(), "activity", "dist");
+  const dist = path.resolve(process.cwd(), 'activity', 'dist');
 
-  if (fs.existsSync(path.join(dist, "index.html"))) {
-    app.use(express.static(dist, { index: "index.html", maxAge: "1h" }));
+  if (fs.existsSync(path.join(dist, 'index.html'))) {
+    app.use(express.static(dist, { index: 'index.html', maxAge: '1h' }));
 
-    app.get("*splat", (_req, res) => {
-      res.sendFile(path.join(dist, "index.html"));
+    app.get('*splat', (_req, res) => {
+      res.sendFile(path.join(dist, 'index.html'));
     });
   } else {
-    app.get("/", (_req, res) =>
+    app.get('/', (_req, res) =>
       res.status(503).send(
-        "VaultX Activity is not built. Run: npm run activity:install && npm run activity:build"
+        'VaultX Activity is not built. Run: npm run activity:install && npm run activity:build'
       )
     );
   }
 
   const port = Number(process.env.PORT || process.env.ACTIVITY_PORT || 5173);
-
-  const server = app.listen(port, "0.0.0.0", () => {
+  const server = app.listen(port, '0.0.0.0', () => {
     console.log(`🎮 VaultX Activity listening on port ${port}`);
   });
 
