@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { Pool } from "pg";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -35,10 +36,95 @@ const dbPath =
     );
 
 
-const db =
+const sqliteDb =
     new Database(
         dbPath
     );
+
+const postgresPool = process.env.DATABASE_URL
+    ? new Pool({ connectionString: process.env.DATABASE_URL })
+    : null;
+
+let postgresReady = false;
+let hydrating = false;
+let persistenceChain = Promise.resolve();
+
+function createSnapshot() {
+    const tables = sqliteDb.prepare(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name <> 'sqlite_sequence'
+        ORDER BY name
+    `).all();
+
+    return Object.fromEntries(
+        tables.map(({ name }) => [
+            name,
+            sqliteDb.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}"`).all()
+        ])
+    );
+}
+
+function queuePostgresSnapshot() {
+    if (!postgresPool || !postgresReady || hydrating) return;
+
+    const snapshot = createSnapshot();
+    persistenceChain = persistenceChain
+        .then(async () => {
+            await postgresPool.query(
+                `UPDATE vaultx_sqlite_state
+                 SET state = $1::jsonb, updated_at = NOW()
+                 WHERE id = 1`,
+                [JSON.stringify(snapshot)]
+            );
+        })
+        .catch(error => {
+            console.error("❌ PostgreSQL persistence failed:", error.message);
+        });
+}
+
+function createDatabaseCompatibilityLayer() {
+    return {
+        get open() {
+            return sqliteDb.open;
+        },
+        pragma(...args) {
+            return sqliteDb.pragma(...args);
+        },
+        exec(...args) {
+            const result = sqliteDb.exec(...args);
+            queuePostgresSnapshot();
+            return result;
+        },
+        prepare(...args) {
+            const statement = sqliteDb.prepare(...args);
+            return new Proxy(statement, {
+                get(target, property) {
+                    const value = target[property];
+                    if (typeof value !== "function") return value;
+
+                    return (...methodArgs) => {
+                        const result = value.apply(target, methodArgs);
+                        if (property === "run") queuePostgresSnapshot();
+                        return result;
+                    };
+                }
+            });
+        },
+        transaction(callback) {
+            return sqliteDb.transaction((...args) => {
+                const result = callback(...args);
+                queuePostgresSnapshot();
+                return result;
+            });
+        },
+        close() {
+            return sqliteDb.close();
+        }
+    };
+}
+
+const db = createDatabaseCompatibilityLayer();
 
 
 /*
@@ -2335,9 +2421,18 @@ export function getDatabaseStats() {
 |--------------------------------------------------------------------------
 */
 
-export function closeDatabase() {
+export async function flushDatabasePersistence() {
+    if (!postgresPool || !postgresReady) return;
+    queuePostgresSnapshot();
+    await persistenceChain;
+}
+
+export async function closeDatabase() {
 
     try {
+
+        await flushDatabasePersistence();
+        if (postgresPool) await postgresPool.end();
 
         if (db.open) {
 
@@ -2536,3 +2631,62 @@ const _claimPremiumOrder = db.prepare(`INSERT OR IGNORE INTO premium_order_fulfi
 export function claimPremiumOrderFulfillment({ orderId, guildId, plan, fulfilledBy }) {
     return _claimPremiumOrder.run(orderId, guildId, plan, fulfilledBy || null, Date.now()).changes > 0;
 }
+
+async function initializePostgresPersistence() {
+    if (!postgresPool) return;
+
+    try {
+        await postgresPool.query(`
+            CREATE TABLE IF NOT EXISTS vaultx_sqlite_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                state JSONB NOT NULL,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `);
+
+        const result = await postgresPool.query(
+            "SELECT state FROM vaultx_sqlite_state WHERE id = 1"
+        );
+
+        if (result.rows[0]?.state) {
+            hydrating = true;
+
+            for (const [tableName, rows] of Object.entries(result.rows[0].state)) {
+                if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(tableName)) continue;
+
+                sqliteDb.prepare(`DELETE FROM "${tableName}"`).run();
+
+                for (const row of rows) {
+                    const columns = Object.keys(row);
+                    if (!columns.length) continue;
+
+                    const quotedColumns = columns
+                        .map(column => `"${column.replaceAll('"', '""')}"`)
+                        .join(", ");
+                    const placeholders = columns.map(() => "?").join(", ");
+
+                    sqliteDb.prepare(`
+                        INSERT INTO "${tableName}" (${quotedColumns})
+                        VALUES (${placeholders})
+                    `).run(...columns.map(column => row[column]));
+                }
+            }
+
+            hydrating = false;
+        }
+
+        postgresReady = true;
+
+        if (!result.rows[0]) queuePostgresSnapshot();
+
+        console.log("🗄️ PostgreSQL persistence enabled via DATABASE_URL.");
+    } catch (error) {
+        hydrating = false;
+        console.error(
+            "❌ PostgreSQL persistence unavailable; continuing with local SQLite:",
+            error.message
+        );
+    }
+}
+
+await initializePostgresPersistence();

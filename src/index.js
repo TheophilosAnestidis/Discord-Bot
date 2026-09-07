@@ -48,7 +48,7 @@ import {
     startDashboard
 } from "./dashboard/dashboard.js";
 
-import { getInactiveTickets, updateTicketRecord } from "./database/database.js";
+import { getInactiveTickets, updateTicketRecord, closeDatabase } from "./database/database.js";
 import { startActivityServer } from "./activityServer.js";
 
 
@@ -876,6 +876,19 @@ process.on(
 
     }
 );
+
+let shuttingDown = false;
+async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`〢 ${signal} received. Flushing database before shutdown...`);
+    try { await client.destroy(); } catch { }
+    try { await closeDatabase(); } catch (error) { console.error("❌ Database shutdown failed:", error.message); }
+    process.exit(0);
+}
+
+process.on("SIGTERM", () => { shutdown("SIGTERM"); });
+process.on("SIGINT", () => { shutdown("SIGINT"); });
 
 
 
