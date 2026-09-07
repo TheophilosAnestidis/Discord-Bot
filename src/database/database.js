@@ -72,9 +72,10 @@ function queuePostgresSnapshot() {
     persistenceChain = persistenceChain
         .then(async () => {
             await postgresPool.query(
-                `UPDATE vaultx_sqlite_state
-                 SET state = $1::jsonb, updated_at = NOW()
-                 WHERE id = 1`,
+                `INSERT INTO vaultx_sqlite_state (id, state, updated_at)
+                 VALUES (1, $1::jsonb, NOW())
+                 ON CONFLICT (id) DO UPDATE
+                 SET state = EXCLUDED.state, updated_at = NOW()`,
                 [JSON.stringify(snapshot)]
             );
         })
@@ -2677,7 +2678,15 @@ async function initializePostgresPersistence() {
 
         postgresReady = true;
 
-        if (!result.rows[0]) queuePostgresSnapshot();
+        if (!result.rows[0]) {
+            queuePostgresSnapshot();
+            await persistenceChain;
+            console.log("🗄️ Initial PostgreSQL snapshot created.");
+        } else {
+            const tableCount = Object.values(result.rows[0].state || {})
+                .reduce((count, rows) => count + (Array.isArray(rows) ? rows.length : 0), 0);
+            console.log(`🗄️ PostgreSQL snapshot restored (${tableCount} rows).`);
+        }
 
         console.log("🗄️ PostgreSQL persistence enabled via DATABASE_URL.");
     } catch (error) {
