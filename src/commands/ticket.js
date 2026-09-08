@@ -57,6 +57,11 @@ export const data =
                 .setName("analytics")
                 .setDescription("[ADMIN] • Show ticket performance and customer feedback")
         )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName("leaderboard")
+                .setDescription("[ADMIN] • Show support staff performance")
+        )
         .addSubcommandGroup(group =>
             group
                 .setName("user")
@@ -129,6 +134,59 @@ export async function execute(interaction) {
 
     if (!(await requirePremium(interaction, "tickets"))) return;
 
+    if (subcommand === "leaderboard") {
+        if (!(await requirePremium(interaction, "analytics"))) return;
+
+        const tickets = getTicketsForGuild(interaction.guild.id)
+            .filter(ticket => ticket.claimed_by);
+        const staff = new Map();
+
+        for (const ticket of tickets) {
+            const current = staff.get(ticket.claimed_by) || {
+                claimed: 0,
+                closed: 0,
+                responseTimes: []
+            };
+            current.claimed += 1;
+            if (ticket.status === "closed") current.closed += 1;
+            if (ticket.last_staff_message_at && ticket.created_at) {
+                const responseTime = ticket.last_staff_message_at - ticket.created_at;
+                if (responseTime >= 0) current.responseTimes.push(responseTime);
+            }
+            staff.set(ticket.claimed_by, current);
+        }
+
+        const ranking = [...staff.entries()]
+            .map(([userId, stats]) => ({
+                userId,
+                ...stats,
+                averageResponse: stats.responseTimes.length
+                    ? Math.round(stats.responseTimes.reduce((sum, value) => sum + value, 0) / stats.responseTimes.length / 60000)
+                    : null
+            }))
+            .sort((first, second) => second.closed - first.closed || second.claimed - first.claimed)
+            .slice(0, 10);
+
+        const rows = ranking.length
+            ? ranking.map((agent, index) => {
+                const member = interaction.guild.members.cache.get(agent.userId);
+                const name = member?.displayName || member?.user?.username || agent.userId;
+                const response = agent.averageResponse === null ? "n/a" : `${agent.averageResponse} min`;
+                return `**${String(index + 1).padStart(2, "0")}**  ${name}\n> Closed **${agent.closed}** • Claimed **${agent.claimed}** • First response **${response}**`;
+            }).join("\n\n")
+            : "No claimed tickets have been recorded yet.";
+
+        const embed = new EmbedBuilder()
+            .setColor(0x8b5cf6)
+            .setAuthor({ name: `${interaction.guild.name} • Support operations`, iconURL: interaction.guild.iconURL({ size: 128 }) || undefined })
+            .setTitle("Support Staff Leaderboard")
+            .setDescription("> Ranked by resolved tickets, then total ownership.\n\n" + rows)
+            .setFooter({ text: "VaultX • Private admin report" })
+            .setTimestamp();
+
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
     if (subcommand === "analytics") {
         if (!(await requirePremium(interaction, "analytics"))) return;
 
@@ -166,6 +224,7 @@ export async function execute(interaction) {
             : slaQueue > 0
                 ? `Follow up on **${slaQueue}** ticket${slaQueue === 1 ? "" : "s"} with an SLA reminder.`
                 : "No immediate action required.";
+            const teamCount = new Set(tickets.filter(ticket => ticket.claimed_by).map(ticket => ticket.claimed_by)).size;
 
         const embed = new EmbedBuilder()
             .setColor(embedColor)
@@ -176,6 +235,7 @@ export async function execute(interaction) {
                 { name: "〢 Ticket volume", value: "```text\nTotal       " + tickets.length + "\nActive      " + active.length + "\nClosed      " + closed.length + "\nResolution  " + resolutionRate + "%\n```", inline: true },
                 { name: "〢 Queue health", value: "```text\nHigh/urgent " + urgentCount + "\nSLA alerts  " + slaQueue + "\nFirst reply " + responseText + "\nStatus      " + health + "\n```", inline: true },
                 { name: "〢 AI coverage", value: "```text\n" + progress(summaries, tickets.length) + "\nCoverage    " + aiCoverage + "%\nSummaries   " + summaries + "/" + tickets.length + "\n```", inline: false },
+                { name: "〢 Team activity", value: "Active agents **" + teamCount + "**\nUse `/ticket leaderboard` for staff performance.", inline: true },
                 { name: "〢 Customer experience", value: feedback.count ? `Average **${feedback.average}/5** • ${feedback.count} ratings\n\n\`\`\`text\n${ratingDistribution}\n\`\`\`` : "No ratings yet. Feedback appears here after customers rate closed tickets.", inline: false }
             )
             .setFooter({ text: "VaultX • Private admin report" })
