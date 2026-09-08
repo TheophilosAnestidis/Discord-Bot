@@ -41,8 +41,14 @@ const sqliteDb =
         dbPath
     );
 
-const postgresPool = process.env.DATABASE_URL
-    ? new Pool({ connectionString: process.env.DATABASE_URL })
+const postgresConnectionString = process.env.DATABASE_URL?.trim() || null;
+const postgresPool = postgresConnectionString
+    ? new Pool({
+        connectionString: postgresConnectionString,
+        family: 4,
+        connectionTimeoutMillis: 10000,
+        ssl: { rejectUnauthorized: false }
+    })
     : null;
 
 let postgresReady = false;
@@ -2637,6 +2643,9 @@ async function initializePostgresPersistence() {
     if (!postgresPool) return;
 
     try {
+        const connection = new URL(postgresConnectionString);
+        console.log(`🗄️ Connecting to PostgreSQL host=${connection.hostname} port=${connection.port || "5432"}`);
+
         await postgresPool.query(`
             CREATE TABLE IF NOT EXISTS vaultx_sqlite_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
