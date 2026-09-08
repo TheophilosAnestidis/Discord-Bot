@@ -153,27 +153,31 @@ export async function execute(interaction) {
         const slaQueue = active.filter(ticket => ticket.sla_notified_at).length;
         const urgentCount = urgent.length;
         const health = urgentCount === 0 && slaQueue === 0 ? "Healthy" : urgentCount > 3 ? "Needs attention" : "Monitor queue";
-        const bar = (value, total, size = 10) => {
+        const progress = (value, total, size = 12) => {
             const filled = total ? Math.round((value / total) * size) : 0;
-            return `${"●".repeat(Math.min(size, filled))}${"○".repeat(Math.max(0, size - filled))}`;
+            return `[${"#".repeat(Math.min(size, filled))}${"-".repeat(Math.max(0, size - filled))}]`;
         };
         const ratingDistribution = [5, 4, 3, 2, 1]
-            .map(rating => `${rating}★  ${bar(feedback.distribution[String(rating)] || 0, feedback.count, 6)}  **${feedback.distribution[String(rating)] || 0}**`)
+            .map(rating => `${rating}/5  ${progress(feedback.distribution[String(rating)] || 0, feedback.count, 8)}  ${feedback.distribution[String(rating)] || 0}`)
             .join("\n");
         const embedColor = urgentCount > 3 ? 0xef4444 : urgentCount || slaQueue ? 0xf59e0b : 0x22c55e;
+        const action = urgentCount > 0
+            ? `Review **${urgentCount}** high-priority ticket${urgentCount === 1 ? "" : "s"}.`
+            : slaQueue > 0
+                ? `Follow up on **${slaQueue}** ticket${slaQueue === 1 ? "" : "s"} with an SLA reminder.`
+                : "No immediate action required.";
 
         const embed = new EmbedBuilder()
             .setColor(embedColor)
             .setAuthor({ name: `${interaction.guild.name} • Support operations`, iconURL: interaction.guild.iconURL({ size: 128 }) || undefined })
             .setTitle("Ticket Command Center")
-            .setDescription(`**${health}**\nLive operational snapshot for your support team.`)
+            .setDescription(`**[ ${health.toUpperCase()} ]**\nLive operational snapshot for your support team.\n\n> ${action}`)
             .addFields(
-                { name: "〢 Ticket volume", value: `Total **${tickets.length}**\nActive **${active.length}** • Closed **${closed.length}**\nResolution rate **${resolutionRate}%**`, inline: true },
-                { name: "〢 Queue health", value: `High / urgent **${urgentCount}**\nSLA reminders **${slaQueue}**\nFirst response **${responseText}**`, inline: true },
-                { name: "〢 AI coverage", value: `${bar(summaries, tickets.length)}\n**${aiCoverage}%** coverage\n${summaries}/${tickets.length} summaries`, inline: true },
-                { name: "〢 Customer experience", value: feedback.count ? `Average **${feedback.average}/5** • ${feedback.count} ratings\n\n${ratingDistribution}` : "No ratings yet. Feedback appears here after customers rate closed tickets.", inline: false }
+                { name: "〢 Ticket volume", value: "```text\nTotal       " + tickets.length + "\nActive      " + active.length + "\nClosed      " + closed.length + "\nResolution  " + resolutionRate + "%\n```", inline: true },
+                { name: "〢 Queue health", value: "```text\nHigh/urgent " + urgentCount + "\nSLA alerts  " + slaQueue + "\nFirst reply " + responseText + "\nStatus      " + health + "\n```", inline: true },
+                { name: "〢 AI coverage", value: "```text\n" + progress(summaries, tickets.length) + "\nCoverage    " + aiCoverage + "%\nSummaries   " + summaries + "/" + tickets.length + "\n```", inline: false },
+                { name: "〢 Customer experience", value: feedback.count ? `Average **${feedback.average}/5** • ${feedback.count} ratings\n\n\`\`\`text\n${ratingDistribution}\n\`\`\`` : "No ratings yet. Feedback appears here after customers rate closed tickets.", inline: false }
             )
-            .setThumbnail(interaction.guild.iconURL({ size: 128 }) || "https://cdn.discordapp.com/embed/avatars/0.png")
             .setFooter({ text: "VaultX • Private admin report" })
             .setTimestamp();
 
