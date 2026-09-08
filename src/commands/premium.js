@@ -65,9 +65,9 @@ export async function execute(interaction) {
     const subData = getPremium(interaction.guildId);
     const embed = successEmbed('Premium Status', subData ? `> **${PLANS[subData.plan]?.label ?? subData.plan}**\n> ${subData.expires_at ? `Active until <t:${Math.floor(subData.expires_at/1000)}:R>` : 'Lifetime access'}` : '> **Free**\n> No active subscription.')
       .addFields(
-        {name:'• Server',value:`> ${interaction.guild?.name ?? 'Unknown'}`,inline:true},
-        {name:'• Access',value:subData ? '> Active' : '> Inactive',inline:true},
-        {name:'• Features',value:subData ? `> ${(PLANS[subData.plan]?.features || []).join(' • ')}` : '> tickets • ai',inline:true}
+        {name:'Server',value:`> ${interaction.guild?.name ?? 'Unknown'}`,inline:true},
+        {name:'Access',value:subData ? '> Active' : '> Inactive',inline:true},
+        {name:'Features',value:subData ? `> ${(PLANS[subData.plan]?.features || []).join(' • ')}` : '> tickets • ai',inline:true}
       );
     return interaction.reply({embeds:[embed],ephemeral:true});
   }
@@ -113,7 +113,7 @@ export async function execute(interaction) {
     }
     if (group === 'code' && sub === 'list') {
       const rows = listPremiumCodes(25);
-      const text = rows.length ? rows.map(r => `${r.revoked_at ? '🔒' : '🔑'} \`${r.code_preview}\` • ${r.plan} • ${r.used_count}/${r.max_uses}`).join('\n') : 'No codes generated.';
+      const text = rows.length ? rows.map(r => `${r.revoked_at ? 'Revoked' : 'Active'} 〢 \`${r.code_preview}\` • ${r.plan} • ${r.used_count}/${r.max_uses}`).join('\n') : 'No codes generated.';
       return interaction.reply({ embeds: [successEmbed('Code Vault', text.slice(0, 4000))], ephemeral: true });
     }
     if (group === 'code' && sub === 'revoke') {
@@ -122,7 +122,7 @@ export async function execute(interaction) {
       const codeHash = crypto.createHash('sha256').update(code).digest('hex');
       const result = deletePremiumCode(codeHash);
       if (!result.changes) throw new Error('Code not found.');
-      return interaction.reply({ embeds: [successEmbed('🔒 Code Revoked', `> Code \`${code}\` is no longer redeemable.`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed('Code Revoked', `> Code \`${code}\` is no longer redeemable.`)], ephemeral: true });
     }
   } catch (e) { console.error(e); return interaction.reply({embeds:[errorEmbed(e.message || 'Unexpected Premium error.')],ephemeral:true}); }
 }

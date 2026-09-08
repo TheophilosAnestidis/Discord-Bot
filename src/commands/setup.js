@@ -123,7 +123,7 @@ export async function execute(interaction) {
     const embed =
         new EmbedBuilder()
             .setColor(0x0f766e)
-            .setTitle("🎫 VaultX Ticket Administration")
+            .setTitle("VaultX 〢 Ticket Administration")
             .setDescription(
                 "Use the menu below to configure this server or manage access to individual tickets. Actions are completed privately in this DM."
             )

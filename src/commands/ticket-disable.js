@@ -207,7 +207,7 @@ export async function execute(
         new EmbedBuilder()
 
             .setTitle(
-                "🗑️ Ticket System Disabled"
+                "VaultX 〢 Ticket System Disabled"
             )
 
             .setDescription(
@@ -219,16 +219,16 @@ export async function execute(
                     "",
 
                     panelDeleted
-                        ? "✅ Existing ticket panel deleted."
-                        : "ℹ️ No existing ticket panel was found.",
+                        ? "> Existing ticket panel deleted."
+                        : "> No existing ticket panel was found.",
 
-                    "🗄️ Guild ticket configuration deleted.",
+                    "> Guild ticket configuration deleted.",
 
-                    "🧠 Ticket AI memory deleted.",
+                    "> Ticket AI memory deleted.",
 
-                    "🤖 Ticket AI statuses deleted.",
+                    "> Ticket AI statuses deleted.",
 
-                    "🧹 Panel information removed from database.",
+                    "> Panel information removed from database.",
 
                     "",
 
@@ -238,9 +238,9 @@ export async function execute(
 
                     "To enable it again:",
 
-                    "1️⃣ `/ticket setup`",
+                    "1. `/ticket setup`",
 
-                    "2️⃣ `/ticket panel`"
+                    "2. `/ticket panel`"
 
                 ].join("\n")
 

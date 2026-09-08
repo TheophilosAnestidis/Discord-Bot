@@ -152,7 +152,7 @@ export async function execute(interaction) {
         const aiCoverage = tickets.length ? Math.round((summaries / tickets.length) * 100) : 0;
         const slaQueue = active.filter(ticket => ticket.sla_notified_at).length;
         const urgentCount = urgent.length;
-        const health = urgentCount === 0 && slaQueue === 0 ? "🟢 Healthy" : urgentCount > 3 ? "🔴 Needs attention" : "🟡 Monitor queue";
+        const health = urgentCount === 0 && slaQueue === 0 ? "Healthy" : urgentCount > 3 ? "Needs attention" : "Monitor queue";
         const bar = (value, total, size = 10) => {
             const filled = total ? Math.round((value / total) * size) : 0;
             return `${"●".repeat(Math.min(size, filled))}${"○".repeat(Math.max(0, size - filled))}`;
@@ -168,10 +168,10 @@ export async function execute(interaction) {
             .setTitle("Ticket Command Center")
             .setDescription(`**${health}**\nLive operational snapshot for your support team.`)
             .addFields(
-                { name: "📊 Ticket volume", value: `Total **${tickets.length}**\nActive **${active.length}** • Closed **${closed.length}**\nResolution rate **${resolutionRate}%**`, inline: true },
-                { name: "⚡ Queue health", value: `High / urgent **${urgentCount}**\nSLA reminders **${slaQueue}**\nFirst response **${responseText}**`, inline: true },
-                { name: "🧠 AI coverage", value: `${bar(summaries, tickets.length)}\n**${aiCoverage}%** coverage\n${summaries}/${tickets.length} summaries`, inline: true },
-                { name: "⭐ Customer experience", value: feedback.count ? `Average **${feedback.average}/5** • ${feedback.count} ratings\n\n${ratingDistribution}` : "No ratings yet. Feedback appears here after customers rate closed tickets.", inline: false }
+                { name: "〢 Ticket volume", value: `Total **${tickets.length}**\nActive **${active.length}** • Closed **${closed.length}**\nResolution rate **${resolutionRate}%**`, inline: true },
+                { name: "〢 Queue health", value: `High / urgent **${urgentCount}**\nSLA reminders **${slaQueue}**\nFirst response **${responseText}**`, inline: true },
+                { name: "〢 AI coverage", value: `${bar(summaries, tickets.length)}\n**${aiCoverage}%** coverage\n${summaries}/${tickets.length} summaries`, inline: true },
+                { name: "〢 Customer experience", value: feedback.count ? `Average **${feedback.average}/5** • ${feedback.count} ratings\n\n${ratingDistribution}` : "No ratings yet. Feedback appears here after customers rate closed tickets.", inline: false }
             )
             .setThumbnail(interaction.guild.iconURL({ size: 128 }) || "https://cdn.discordapp.com/embed/avatars/0.png")
             .setFooter({ text: "VaultX • Private admin report" })

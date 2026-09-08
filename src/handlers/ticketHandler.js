@@ -366,15 +366,14 @@ function buildCloseConfirmation() {
 function buildFeedbackRow(channelId) {
     return new ActionRowBuilder().addComponents(
         ...[
-            { rating: 1, label: "Poor", emoji: "😞", style: ButtonStyle.Danger },
-            { rating: 2, label: "Fair", emoji: "😕", style: ButtonStyle.Danger },
-            { rating: 3, label: "Good", emoji: "😐", style: ButtonStyle.Secondary },
-            { rating: 4, label: "Great", emoji: "🙂", style: ButtonStyle.Success },
-            { rating: 5, label: "Excellent", emoji: "🤩", style: ButtonStyle.Success }
-        ].map(({ rating, label, emoji, style }) => new ButtonBuilder()
+            { rating: 1, label: "Poor", style: ButtonStyle.Danger },
+            { rating: 2, label: "Fair", style: ButtonStyle.Danger },
+            { rating: 3, label: "Good", style: ButtonStyle.Secondary },
+            { rating: 4, label: "Great", style: ButtonStyle.Success },
+            { rating: 5, label: "Excellent", style: ButtonStyle.Success }
+        ].map(({ rating, label, style }) => new ButtonBuilder()
             .setCustomId(`ticket:rating:${channelId}:${rating}`)
             .setLabel(label)
-            .setEmoji(emoji)
             .setStyle(style))
     );
 }
@@ -921,7 +920,7 @@ export async function sendStaffIntelligenceLog(
     };
 
     const priority = priorityMeta[intelligence.priority] || priorityMeta.normal;
-    const sentiment = sentimentMeta[intelligence.sentiment] || "😐 Neutral";
+    const sentiment = sentimentMeta[intelligence.sentiment] || "Neutral";
     const confidence = Math.max(0, Math.min(100, Number(intelligence.confidence) || 0));
 
     const embed = new EmbedBuilder()
@@ -931,7 +930,7 @@ export async function sendStaffIntelligenceLog(
         )
         .addFields(
             {
-                name: "• Category",
+                name: "Category",
                 value: `> ${String(intelligence.category || "general").toUpperCase()}`,
                 inline: true
             },
@@ -941,27 +940,27 @@ export async function sendStaffIntelligenceLog(
                 inline: true
             },
             {
-                name: "• Confidence",
+                name: "Confidence",
                 value: `> **${confidence}%**`,
                 inline: true
             },
             {
-                name: "• Sentiment",
+                name: "Sentiment",
                 value: `> ${sentiment}`,
                 inline: true
             },
             {
-                name: "• Summary",
+                name: "Summary",
                 value: `> ${String(intelligence.summary || "No summary available.").slice(0, 1024)}`,
                 inline: false
             },
             {
-                name: "• Issue",
+                name: "Issue",
                 value: `> ${String(intelligence.issue || "No specific issue detected.").slice(0, 1024)}`,
                 inline: false
             },
             {
-                name: "• Suggested Action",
+                name: "Suggested Action",
                 value: `> ${String(intelligence.suggested_action || intelligence.suggestedAction || "Review the ticket manually.").slice(0, 1024)}`,
                 inline: false
             }

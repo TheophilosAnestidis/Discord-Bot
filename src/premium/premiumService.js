@@ -57,7 +57,7 @@ export async function requirePremium(interaction, feature = null) {
   if (!interaction.guildId || hasPremium(interaction.guildId, feature)) return true;
   const embed = new EmbedBuilder()
     .setColor(0xf59e0b)
-    .setTitle('💎 VaultX Premium Required')
+    .setTitle('VaultX 〢 Premium Required')
     .setDescription('This feature is available to Premium servers only.')
     .addFields({
       name: '🔐 Access',
