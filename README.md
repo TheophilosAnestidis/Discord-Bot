@@ -78,6 +78,8 @@ Pro protection:
 3. Use `/protection status` to review the active thresholds.
 4. Use `/protection spam-limit` to change the number of messages allowed in the rolling window.
 
+Advanced controls include `/protection raid-limit`, `/protection account-age`, `/protection quarantine-role`, `/protection anti-links`, `/protection anti-duplicates`, and `/protection anti-mentions`. Repeated violations receive graduated timeouts, duplicate messages and mention floods are detected, join bursts are grouped into raid incidents, and suspicious members can be assigned to a quarantine role.
+
 Protection is available only to Pro and Lifetime servers. It deletes detected spam or links, applies a short timeout after repeated spam, and flags accounts created less than 24 hours before joining. Administrators and members with Manage Messages are bypassed. Enable the `Guild Members` privileged intent in the Discord Developer Portal for anti-raid join checks.
 
 ## Public deployment from a home PC

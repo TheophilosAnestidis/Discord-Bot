@@ -1,13 +1,21 @@
 import { EmbedBuilder, PermissionFlagsBits } from "discord.js";
+import crypto from "node:crypto";
 import { getGuildSettings } from "../database/database.js";
 import { hasPremium } from "../premium/premiumService.js";
 
 const messageWindows = new Map();
 const strikes = new Map();
+const duplicateMessages = new Map();
+const raidWindows = new Map();
+const raidLogCooldowns = new Map();
 const linkPattern = /(?:https?:\/\/|www\.)\S+/i;
 
 function key(guildId, userId) {
     return `${guildId}:${userId}`;
+}
+
+function fingerprint(content) {
+    return crypto.createHash("sha256").update(content.trim().toLowerCase()).digest("hex");
 }
 
 function isModerator(message) {
@@ -66,10 +74,21 @@ export async function handleProtectionMessage(message) {
     messageWindows.set(userKey, recent);
 
     const hasLink = Boolean(settings.protection_anti_links && linkPattern.test(message.content));
+    const mentionCount = message.mentions.users.size + message.mentions.roles.size + (message.mentions.everyone ? 1 : 0);
+    const hasMentionFlood = Boolean(settings.protection_anti_mentions && mentionCount >= 5);
+    const messageHash = fingerprint(message.content);
+    const previousDuplicate = duplicateMessages.get(userKey);
+    const isDuplicate = Boolean(settings.protection_anti_duplicates && previousDuplicate?.hash === messageHash && now - previousDuplicate.createdAt < 15_000);
+    duplicateMessages.set(userKey, { hash: messageHash, createdAt: now });
     const isSpam = recent.length >= limit;
-    if (!hasLink && !isSpam) return false;
+    if (!hasLink && !hasMentionFlood && !isDuplicate && !isSpam) return false;
 
-    const reason = hasLink ? "Blocked link in a protected channel." : `Spam threshold exceeded: ${recent.length} messages in ${Math.round(windowMs / 1000)} seconds.`;
+    const reasons = [];
+    if (hasLink) reasons.push("blocked link");
+    if (hasMentionFlood) reasons.push(`${mentionCount} mentions`);
+    if (isDuplicate) reasons.push("duplicate message");
+    if (isSpam) reasons.push(`${recent.length} messages in ${Math.round(windowMs / 1000)} seconds`);
+    const reason = `Protection rule triggered: ${reasons.join(" • ")}.`;
     let action = "Message deleted";
     try {
         await message.delete();
@@ -78,12 +97,13 @@ export async function handleProtectionMessage(message) {
         action = "Message could not be deleted";
     }
 
-    if (isSpam) {
+    if (isSpam || hasMentionFlood || isDuplicate) {
         const count = addStrike(message.guild.id, message.author.id);
         if (count >= 2 && message.member?.moderatable) {
             try {
-                await message.member.timeout(10 * 60 * 1000, "VaultX Pro Protection: repeated spam");
-                action += " • User timed out for 10 minutes";
+                const timeoutMinutes = Math.min(60, 5 * count);
+                await message.member.timeout(timeoutMinutes * 60 * 1000, "VaultX Pro Protection: repeated violations");
+                action += ` • User timed out for ${timeoutMinutes} minutes`;
             } catch (error) {
                 console.warn("Protection timeout failed:", error.message);
             }
@@ -104,30 +124,59 @@ export async function handleProtectionJoin(member) {
     const settings = getGuildSettings(member.guild.id);
     if (!settings?.protection_enabled || !settings.protection_anti_raid) return false;
 
+    const accountAgeLimit = Math.max(1, Number(settings.protection_account_age_hours || 24));
     const accountAgeHours = (Date.now() - member.user.createdTimestamp) / 3600000;
-    if (accountAgeHours >= 24) return false;
+    const isNewAccount = accountAgeHours < accountAgeLimit;
+    const guildKey = member.guild.id;
+    const now = Date.now();
+    const raidWindowMs = Math.max(10, Number(settings.protection_raid_window || 20)) * 1000;
+    const recentJoins = (raidWindows.get(guildKey) || []).filter(timestamp => now - timestamp < raidWindowMs);
+    recentJoins.push(now);
+    raidWindows.set(guildKey, recentJoins);
+    const raidLimit = Math.max(3, Number(settings.protection_raid_limit || 5));
+    const raidDetected = recentJoins.length >= raidLimit;
+    if (!isNewAccount && !raidDetected) return false;
 
-    let action = "Suspicious account detected";
-    if (member.moderatable) {
+    let action = isNewAccount ? "Suspicious account detected" : "Join burst detected";
+    const quarantineRole = settings.protection_quarantine_role_id
+        ? member.guild.roles.cache.get(settings.protection_quarantine_role_id)
+        : null;
+    if (quarantineRole && member.manageable) {
         try {
-            await member.timeout(10 * 60 * 1000, "VaultX Pro Protection: new account");
+            await member.roles.add(quarantineRole, "VaultX Pro Protection: quarantine");
+            action = "Quarantine role applied";
+        } catch (error) {
+            console.warn("Protection quarantine failed:", error.message);
+        }
+    } else if (member.moderatable) {
+        try {
+            await member.timeout(10 * 60 * 1000, "VaultX Pro Protection: suspicious join");
             action = "User timed out for 10 minutes";
         } catch (error) {
             console.warn("Protection join timeout failed:", error.message);
         }
     }
 
-    await sendProtectionLog(member.guild, settings, {
-        reason: `Account age is under 24 hours (${Math.max(0, Math.round(accountAgeHours * 10) / 10)}h).`,
-        action,
-        userId: member.id,
-        channelId: settings.protection_log_channel_id || member.guild.systemChannelId || member.guild.id,
-        color: 0xf59e0b
-    });
+    const logKey = `${guildKey}:raid`;
+    if (!raidDetected || !raidLogCooldowns.has(logKey) || raidLogCooldowns.get(logKey) <= now) {
+        raidLogCooldowns.set(logKey, now + raidWindowMs);
+        await sendProtectionLog(member.guild, settings, {
+            reason: raidDetected
+                ? `Join burst detected: ${recentJoins.length} joins in ${Math.round(raidWindowMs / 1000)} seconds.`
+                : `Account age is under ${accountAgeLimit} hours (${Math.max(0, Math.round(accountAgeHours * 10) / 10)}h).`,
+            action,
+            userId: member.id,
+            channelId: member.guild.systemChannelId || member.id,
+            color: raidDetected ? 0xef4444 : 0xf59e0b
+        });
+    }
     return true;
 }
 
 export function clearProtectionState() {
     messageWindows.clear();
     strikes.clear();
+    duplicateMessages.clear();
+    raidWindows.clear();
+    raidLogCooldowns.clear();
 }

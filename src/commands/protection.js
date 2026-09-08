@@ -35,6 +35,52 @@ export const data = new SlashCommandBuilder()
             .setDescription("Messages allowed in 3-60 seconds")
             .setMinValue(3)
             .setMaxValue(20)
+            .setRequired(true)))
+    .addSubcommand(subcommand => subcommand
+        .setName("raid-limit")
+        .setDescription("Set joins required to trigger raid mode")
+        .addIntegerOption(option => option
+            .setName("joins")
+            .setDescription("Joins in the raid window")
+            .setMinValue(3)
+            .setMaxValue(50)
+            .setRequired(true)))
+    .addSubcommand(subcommand => subcommand
+        .setName("account-age")
+        .setDescription("Set the minimum account age for new-member checks")
+        .addIntegerOption(option => option
+            .setName("hours")
+            .setDescription("Account age in hours")
+            .setMinValue(1)
+            .setMaxValue(720)
+            .setRequired(true)))
+    .addSubcommand(subcommand => subcommand
+        .setName("quarantine-role")
+        .setDescription("Set a role for suspicious new members")
+        .addRoleOption(option => option
+            .setName("role")
+            .setDescription("Role applied during quarantine")
+            .setRequired(true)))
+    .addSubcommand(subcommand => subcommand
+        .setName("anti-links")
+        .setDescription("Enable or disable link protection")
+        .addBooleanOption(option => option
+            .setName("enabled")
+            .setDescription("Whether this rule is active")
+            .setRequired(true)))
+    .addSubcommand(subcommand => subcommand
+        .setName("anti-duplicates")
+        .setDescription("Enable or disable duplicate message protection")
+        .addBooleanOption(option => option
+            .setName("enabled")
+            .setDescription("Whether this rule is active")
+            .setRequired(true)))
+    .addSubcommand(subcommand => subcommand
+        .setName("anti-mentions")
+        .setDescription("Enable or disable mention flood protection")
+        .addBooleanOption(option => option
+            .setName("enabled")
+            .setDescription("Whether this rule is active")
             .setRequired(true)));
 
 function embed(title, description, color = 0x8b5cf6) {
@@ -59,7 +105,7 @@ export async function execute(interaction) {
     const subcommand = interaction.options.getSubcommand();
     if (subcommand === "status") {
         const state = settings.protection_enabled ? "Enabled" : "Disabled";
-        return interaction.reply({ embeds: [embed("Protection Status", `> Status 〢 **${state}**\n> Anti-spam 〢 **${settings.protection_spam_limit} messages / ${settings.protection_spam_window}s**\n> Anti-links 〢 **${settings.protection_anti_links ? "Enabled" : "Disabled"}**\n> Anti-raid 〢 **${settings.protection_anti_raid ? "Enabled" : "Disabled"}**\n> Log channel 〢 ${settings.protection_log_channel_id ? `<#${settings.protection_log_channel_id}>` : "Not configured"}`)], ephemeral: true });
+        return interaction.reply({ embeds: [embed("Protection Status", `> Status 〢 **${state}**\n> Anti-spam 〢 **${settings.protection_spam_limit} messages / ${settings.protection_spam_window}s**\n> Anti-links 〢 **${settings.protection_anti_links ? "Enabled" : "Disabled"}**\n> Duplicate messages 〢 **${settings.protection_anti_duplicates ? "Enabled" : "Disabled"}**\n> Mention flood 〢 **${settings.protection_anti_mentions ? "Enabled" : "Disabled"}**\n> Anti-raid 〢 **${settings.protection_anti_raid ? "Enabled" : "Disabled"}**\n> Raid threshold 〢 **${settings.protection_raid_limit} joins / ${settings.protection_raid_window}s**\n> Account age 〢 **${settings.protection_account_age_hours} hours**\n> Quarantine role 〢 ${settings.protection_quarantine_role_id ? `<@&${settings.protection_quarantine_role_id}>` : "Not configured"}\n> Log channel 〢 ${settings.protection_log_channel_id ? `<#${settings.protection_log_channel_id}>` : "Not configured"}`)], ephemeral: true });
     }
 
     if (subcommand === "enable") {
@@ -76,6 +122,35 @@ export async function execute(interaction) {
         const channel = interaction.options.getChannel("channel");
         updateProtectionSettings(interaction.guild.id, { protection_log_channel_id: channel.id });
         return interaction.reply({ embeds: [embed("Log Channel Updated", `> Protection events will be sent to ${channel}.`)], ephemeral: true });
+    }
+
+    if (subcommand === "raid-limit") {
+        const joins = interaction.options.getInteger("joins");
+        updateProtectionSettings(interaction.guild.id, { protection_raid_limit: joins });
+        return interaction.reply({ embeds: [embed("Raid Threshold Updated", `> Raid mode triggers after **${joins} joins** in **${settings.protection_raid_window} seconds**.`)], ephemeral: true });
+    }
+
+    if (subcommand === "account-age") {
+        const hours = interaction.options.getInteger("hours");
+        updateProtectionSettings(interaction.guild.id, { protection_account_age_hours: hours });
+        return interaction.reply({ embeds: [embed("Account Age Updated", `> Accounts younger than **${hours} hours** will be reviewed.`)], ephemeral: true });
+    }
+
+    if (subcommand === "quarantine-role") {
+        const role = interaction.options.getRole("role");
+        updateProtectionSettings(interaction.guild.id, { protection_quarantine_role_id: role.id });
+        return interaction.reply({ embeds: [embed("Quarantine Role Updated", `> Suspicious members will receive ${role}.`)], ephemeral: true });
+    }
+
+    if (["anti-links", "anti-duplicates", "anti-mentions"].includes(subcommand)) {
+        const enabled = interaction.options.getBoolean("enabled");
+        const setting = {
+            "anti-links": "protection_anti_links",
+            "anti-duplicates": "protection_anti_duplicates",
+            "anti-mentions": "protection_anti_mentions"
+        }[subcommand];
+        updateProtectionSettings(interaction.guild.id, { [setting]: enabled ? 1 : 0 });
+        return interaction.reply({ embeds: [embed("Rule Updated", `> ${subcommand.replaceAll("-", " ")} 〢 **${enabled ? "Enabled" : "Disabled"}**`)], ephemeral: true });
     }
 
     const messages = interaction.options.getInteger("messages");

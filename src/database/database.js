@@ -259,6 +259,18 @@ db.exec(`
 
         protection_anti_raid INTEGER NOT NULL DEFAULT 1,
 
+        protection_anti_duplicates INTEGER NOT NULL DEFAULT 1,
+
+        protection_anti_mentions INTEGER NOT NULL DEFAULT 1,
+
+        protection_raid_limit INTEGER NOT NULL DEFAULT 5,
+
+        protection_raid_window INTEGER NOT NULL DEFAULT 20,
+
+        protection_account_age_hours INTEGER NOT NULL DEFAULT 24,
+
+        protection_quarantine_role_id TEXT,
+
         created_at INTEGER NOT NULL,
 
         updated_at INTEGER NOT NULL
@@ -348,6 +360,12 @@ addColumnIfMissing("guild_settings", "protection_spam_limit", "INTEGER NOT NULL 
 addColumnIfMissing("guild_settings", "protection_spam_window", "INTEGER NOT NULL DEFAULT 10");
 addColumnIfMissing("guild_settings", "protection_anti_links", "INTEGER NOT NULL DEFAULT 1");
 addColumnIfMissing("guild_settings", "protection_anti_raid", "INTEGER NOT NULL DEFAULT 1");
+addColumnIfMissing("guild_settings", "protection_anti_duplicates", "INTEGER NOT NULL DEFAULT 1");
+addColumnIfMissing("guild_settings", "protection_anti_mentions", "INTEGER NOT NULL DEFAULT 1");
+addColumnIfMissing("guild_settings", "protection_raid_limit", "INTEGER NOT NULL DEFAULT 5");
+addColumnIfMissing("guild_settings", "protection_raid_window", "INTEGER NOT NULL DEFAULT 20");
+addColumnIfMissing("guild_settings", "protection_account_age_hours", "INTEGER NOT NULL DEFAULT 24");
+addColumnIfMissing("guild_settings", "protection_quarantine_role_id", "TEXT");
 
 
 addColumnIfMissing(
@@ -872,7 +890,13 @@ export function updateProtectionSettings(guildId, changes = {}) {
         "protection_spam_limit",
         "protection_spam_window",
         "protection_anti_links",
-        "protection_anti_raid"
+        "protection_anti_raid",
+        "protection_anti_duplicates",
+        "protection_anti_mentions",
+        "protection_raid_limit",
+        "protection_raid_window",
+        "protection_account_age_hours",
+        "protection_quarantine_role_id"
     ]);
     const entries = Object.entries(changes).filter(([key]) => allowed.has(key));
     if (!guildId || !entries.length) return getGuildSettings(guildId);
