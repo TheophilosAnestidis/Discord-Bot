@@ -824,7 +824,7 @@ export function startDashboard(client) {
                     updatedAt: ticket.updated_at,
                     closedAt: ticket.closed_at,
                     tags: (() => { try { return JSON.parse(ticket.tags || "[]"); } catch { return []; } })(),
-                    intelligence: getTicketIntelligence(String(ticket.id))
+                    intelligence: getTicketIntelligence(ticket.channel_id)
                 }));
 
         return response.json(tickets);

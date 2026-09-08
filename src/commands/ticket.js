@@ -1,6 +1,7 @@
 import {
     SlashCommandBuilder,
-    PermissionFlagsBits
+    PermissionFlagsBits,
+    EmbedBuilder
 } from "discord.js";
 
 import {
@@ -20,6 +21,7 @@ import {
 } from "./ticket-user.js";
 
 import { requirePremium } from "../premium/premiumService.js";
+import { getTicketsForGuild, getTicketFeedbackStats, getTicketIntelligence } from "../database/database.js";
 
 
 function addSetupOptions(subcommand) {
@@ -49,6 +51,11 @@ export const data =
             subcommand
                 .setName("panel")
                 .setDescription("[ADMIN] • Send the ticket creation panel")
+        )
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName("analytics")
+                .setDescription("[ADMIN] • Show ticket performance and customer feedback")
         )
         .addSubcommandGroup(group =>
             group
@@ -121,6 +128,42 @@ export async function execute(interaction) {
 
 
     if (!(await requirePremium(interaction, "tickets"))) return;
+
+    if (subcommand === "analytics") {
+        if (!(await requirePremium(interaction, "analytics"))) return;
+
+        const tickets = getTicketsForGuild(interaction.guild.id);
+        const active = tickets.filter(ticket => ticket.status !== "closed");
+        const closed = tickets.filter(ticket => ticket.status === "closed");
+        const urgent = active.filter(ticket => ["urgent", "high"].includes(ticket.priority));
+        const summaries = tickets.filter(ticket => getTicketIntelligence(ticket.channel_id)?.summary).length;
+        const feedback = getTicketFeedbackStats(interaction.guild.id);
+        const averageResponse = tickets
+            .filter(ticket => ticket.last_staff_message_at && ticket.created_at)
+            .map(ticket => ticket.last_staff_message_at - ticket.created_at)
+            .filter(value => value >= 0);
+        const responseMs = averageResponse.length
+            ? averageResponse.reduce((total, value) => total + value, 0) / averageResponse.length
+            : 0;
+        const responseText = responseMs
+            ? `${Math.round(responseMs / 60000)} min`
+            : "No data";
+
+        const embed = new EmbedBuilder()
+            .setColor(0x8b5cf6)
+            .setTitle("VaultX 〢 Ticket Analytics")
+            .setDescription(`Operational overview for **${interaction.guild.name}**`)
+            .addFields(
+                { name: "Tickets", value: `Total **${tickets.length}**\nActive **${active.length}**\nClosed **${closed.length}**`, inline: true },
+                { name: "Queue", value: `High / urgent **${urgent.length}**\nAvg. first response **${responseText}**`, inline: true },
+                { name: "AI", value: `Summaries **${summaries}/${tickets.length || 0}**`, inline: true },
+                { name: "Customer feedback", value: feedback.count ? `Average **${feedback.average}/5**\nRatings **${feedback.count}**` : "No ratings yet", inline: false }
+            )
+            .setFooter({ text: "VaultX • Support operations" })
+            .setTimestamp();
+
+        return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
 
     if (subcommand === "setup") {
 

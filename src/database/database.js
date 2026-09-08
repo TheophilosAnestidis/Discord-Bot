@@ -536,7 +536,9 @@ db.exec(`
 
         last_user_message_at INTEGER,
 
-        last_staff_message_at INTEGER
+        last_staff_message_at INTEGER,
+
+        sla_notified_at INTEGER
 
     );
 
@@ -546,6 +548,71 @@ db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tickets_owner
     ON tickets(guild_id, owner_id, status);
 `);
+
+addColumnIfMissing(
+    "tickets",
+    "sla_notified_at",
+    "INTEGER"
+);
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS ticket_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_id INTEGER NOT NULL UNIQUE,
+        channel_id TEXT NOT NULL UNIQUE,
+        guild_id TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        rating INTEGER NOT NULL,
+        comment TEXT,
+        created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ticket_feedback_guild
+    ON ticket_feedback(guild_id, created_at);
+`);
+
+export function getTicketFeedback(channelId) {
+    if (!channelId) return null;
+    return db.prepare(`
+        SELECT * FROM ticket_feedback WHERE channel_id = ?
+    `).get(channelId) ?? null;
+}
+
+export function saveTicketFeedback({ ticketId, channelId, guildId, ownerId, rating, comment = null }) {
+    const normalizedRating = Math.max(1, Math.min(5, Number(rating) || 0));
+    if (!ticketId || !channelId || !guildId || !ownerId || !normalizedRating) return null;
+
+    db.prepare(`
+        INSERT INTO ticket_feedback (ticket_id, channel_id, guild_id, owner_id, rating, comment, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(ticket_id) DO UPDATE SET
+            rating = excluded.rating,
+            comment = excluded.comment,
+            created_at = excluded.created_at
+    `).run(ticketId, channelId, guildId, ownerId, normalizedRating, comment, Date.now());
+
+    return getTicketFeedback(channelId);
+}
+
+export function getTicketFeedbackStats(guildId) {
+    if (!guildId) return { count: 0, average: 0, distribution: {} };
+    const rows = db.prepare(`
+        SELECT rating, COUNT(*) AS count
+        FROM ticket_feedback
+        WHERE guild_id = ?
+        GROUP BY rating
+        ORDER BY rating DESC
+    `).all(guildId);
+    const count = rows.reduce((total, row) => total + Number(row.count), 0);
+    const average = count
+        ? rows.reduce((total, row) => total + Number(row.rating) * Number(row.count), 0) / count
+        : 0;
+    return {
+        count,
+        average: Number(average.toFixed(2)),
+        distribution: Object.fromEntries(rows.map(row => [String(row.rating), Number(row.count)]))
+    };
+}
 
 
 /*
@@ -2227,7 +2294,8 @@ export function updateTicketRecord(channelId, changes = {}) {
         "tags",
         "last_user_message_at",
         "last_staff_message_at",
-        "closed_at"
+        "closed_at",
+        "sla_notified_at"
     ]);
 
     const entries =

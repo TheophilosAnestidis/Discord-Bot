@@ -36,7 +36,8 @@ import {
 import {
     handleTicketButton,
     handleTicketAccessSelect,
-    createTicket
+    createTicket,
+    handleTicketRatingButton
 } from "./handlers/ticketHandler.js";
 
 import {
@@ -48,7 +49,7 @@ import {
     startDashboard
 } from "./dashboard/dashboard.js";
 
-import { getInactiveTickets, updateTicketRecord, closeDatabase } from "./database/database.js";
+import { getInactiveTickets, updateTicketRecord, getGuildSettings, closeDatabase } from "./database/database.js";
 import { startActivityServer } from "./activityServer.js";
 
 
@@ -488,6 +489,18 @@ client.on(
             const customId =
                 interaction.customId;
 
+            if (customId.startsWith("ticket:rating:")) {
+                try {
+                    await handleTicketRatingButton(interaction);
+                } catch (error) {
+                    console.error("❌ Ticket rating error:", error);
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({ content: "❌ Failed to save your rating.", flags: MessageFlags.Ephemeral });
+                    }
+                }
+                return;
+            }
+
 
             /*
             |------------------------------------------------------------------
@@ -913,6 +926,34 @@ function startTicketAutoClose() {
     setTimeout(run, 20_000).unref();
 }
 
+function startTicketSlaReminders() {
+    const hours = Math.max(0, Number(process.env.TICKET_SLA_HOURS || 4));
+    if (!hours) return;
+
+    const run = async () => {
+        const cutoff = Date.now() - hours * 60 * 60 * 1000;
+        for (const ticket of getInactiveTickets(cutoff, 50)) {
+            if (ticket.sla_notified_at && Date.now() - ticket.sla_notified_at < 6 * 60 * 60 * 1000) continue;
+
+            const guild = client.guilds.cache.get(ticket.guild_id);
+            const channel = guild?.channels.cache.get(ticket.channel_id);
+            if (!channel) continue;
+
+            const settings = guild ? getGuildSettings(ticket.guild_id) : null;
+            const supportRole = settings?.support_role_id ? `<@&${settings.support_role_id}> ` : "";
+            try {
+                await channel.send({ content: `${supportRole}⏱️ **SLA reminder:** this ticket has had no customer activity for ${hours}h. Please review it.` });
+                updateTicketRecord(ticket.channel_id, { sla_notified_at: Date.now() });
+            } catch (error) {
+                console.warn(`SLA reminder failed | ticket=${ticket.channel_id}:`, error.message);
+            }
+        }
+    };
+
+    setInterval(run, 15 * 60 * 1000).unref();
+    setTimeout(run, 25_000).unref();
+}
+
 /*
 |--------------------------------------------------------------------------
 | STARTUP
@@ -968,6 +1009,7 @@ async function start() {
         if (serviceMode === "all" || serviceMode === "dashboard") {
             startDashboard(client);
             startTicketAutoClose();
+            startTicketSlaReminders();
         }
         if (serviceMode === "all" || serviceMode === "activity") {
             startActivityServer();

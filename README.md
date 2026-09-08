@@ -2,6 +2,7 @@
 
 VaultX is a Discord platform containing:
 - Discord bot + AI ticket system
+- Ticket analytics, customer ratings and configurable SLA reminders
 - Admin dashboard
 - Premium licensing and Stripe checkout
 - Standalone Discord Activity
@@ -61,6 +62,13 @@ If either Render service name is changed, update `PUBLIC_URL`, `DASHBOARD_REDIRE
    ```bash
    npm start
    ```
+
+Optional ticket workflow settings:
+
+- `TICKET_SLA_HOURS` controls when an inactive ticket receives a staff reminder (default: `4`). Set it to `0` to disable reminders.
+- `TICKET_AUTO_CLOSE_HOURS` controls automatic closure of inactive tickets (default: `24`). Set it to `0` to disable auto-close.
+
+Staff can view the operational metrics from `/ticket analytics`. After a ticket is closed, the ticket owner receives a private 1-5 rating request when Discord DMs are available.
 
 ## Public deployment from a home PC
 

@@ -20,7 +20,9 @@ import {
     isAIEnabled,
     createTicketRecord,
     updateTicketRecord,
-    getTicketRecord
+    getTicketRecord,
+    getTicketFeedback,
+    saveTicketFeedback
 } from "../database/database.js";
 
 import {
@@ -359,6 +361,70 @@ function buildCloseConfirmation() {
 
         );
 
+}
+
+function buildFeedbackRow(channelId) {
+    return new ActionRowBuilder().addComponents(
+        ...[1, 2, 3, 4, 5].map(rating => new ButtonBuilder()
+            .setCustomId(`ticket:rating:${channelId}:${rating}`)
+            .setLabel(String(rating))
+            .setStyle(rating >= 4 ? ButtonStyle.Success : rating <= 2 ? ButtonStyle.Danger : ButtonStyle.Secondary))
+    );
+}
+
+export async function sendTicketFeedbackRequest(client, ticket, guildName) {
+    if (!client || !ticket?.owner_id || !ticket.channel_id) return false;
+
+    try {
+        const owner = await client.users.fetch(ticket.owner_id);
+        await owner.send({
+            embeds: [new EmbedBuilder()
+                .setColor(CONFIG.colors.info)
+                .setTitle("How was your support experience?")
+                .setDescription(`Your **${guildName || "VaultX"}** ticket has been closed. Please rate the support you received from 1 to 5.`)
+                .setFooter({ text: "Your rating helps the support team improve." })],
+            components: [buildFeedbackRow(ticket.channel_id)]
+        });
+        return true;
+    } catch (error) {
+        console.warn(`⚠️ Could not send ticket feedback request | ticket=${ticket.channel_id}:`, error.message);
+        return false;
+    }
+}
+
+export async function handleTicketRatingButton(interaction) {
+    if (!interaction.isButton() || !interaction.customId.startsWith("ticket:rating:")) return false;
+
+    const [, , channelId, rawRating] = interaction.customId.split(":");
+    const ticket = getTicketRecord(channelId);
+    const rating = Number(rawRating);
+
+    if (!ticket || interaction.user.id !== ticket.owner_id || rating < 1 || rating > 5) {
+        await interaction.reply({ content: "❌ This feedback request is not valid for your account.", flags: MessageFlags.Ephemeral });
+        return true;
+    }
+
+    if (getTicketFeedback(channelId)) {
+        await interaction.reply({ content: "✅ You have already rated this ticket. Thank you!", flags: MessageFlags.Ephemeral });
+        return true;
+    }
+
+    saveTicketFeedback({
+        ticketId: ticket.id,
+        channelId,
+        guildId: ticket.guild_id,
+        ownerId: ticket.owner_id,
+        rating
+    });
+
+    await interaction.update({
+        embeds: [new EmbedBuilder()
+            .setColor(rating >= 4 ? CONFIG.colors.success : rating <= 2 ? CONFIG.colors.danger : CONFIG.colors.warning)
+            .setTitle("Thank you for your feedback")
+            .setDescription(`You rated this support experience **${rating}/5**.`)],
+        components: []
+    });
+    return true;
 }
 
 
@@ -2617,6 +2683,12 @@ export async function handleTicketButton(
             );
 
         }
+
+        await sendTicketFeedbackRequest(
+            interaction.client,
+            getTicketRecord(interaction.channel.id),
+            interaction.guild.name
+        );
 
 
         /*
