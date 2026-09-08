@@ -151,15 +151,16 @@ export async function execute(interaction) {
         const resolutionRate = tickets.length ? Math.round((closed.length / tickets.length) * 100) : 0;
         const aiCoverage = tickets.length ? Math.round((summaries / tickets.length) * 100) : 0;
         const slaQueue = active.filter(ticket => ticket.sla_notified_at).length;
-        const health = urgent === 0 && slaQueue === 0 ? "🟢 Healthy" : urgent > 3 ? "🔴 Needs attention" : "🟡 Monitor queue";
+        const urgentCount = urgent.length;
+        const health = urgentCount === 0 && slaQueue === 0 ? "🟢 Healthy" : urgentCount > 3 ? "🔴 Needs attention" : "🟡 Monitor queue";
         const bar = (value, total, size = 10) => {
             const filled = total ? Math.round((value / total) * size) : 0;
-            return `${"▰".repeat(Math.min(size, filled))}${"▱".repeat(Math.max(0, size - filled))}`;
+            return `${"●".repeat(Math.min(size, filled))}${"○".repeat(Math.max(0, size - filled))}`;
         };
         const ratingDistribution = [5, 4, 3, 2, 1]
-            .map(rating => `${rating}★ ${bar(feedback.distribution[String(rating)] || 0, feedback.count)} ${feedback.distribution[String(rating)] || 0}`)
+            .map(rating => `${rating}★  ${bar(feedback.distribution[String(rating)] || 0, feedback.count, 6)}  **${feedback.distribution[String(rating)] || 0}**`)
             .join("\n");
-        const embedColor = urgent > 3 ? 0xef4444 : urgent || slaQueue ? 0xf59e0b : 0x22c55e;
+        const embedColor = urgentCount > 3 ? 0xef4444 : urgentCount || slaQueue ? 0xf59e0b : 0x22c55e;
 
         const embed = new EmbedBuilder()
             .setColor(embedColor)
@@ -168,8 +169,8 @@ export async function execute(interaction) {
             .setDescription(`**${health}**\nLive operational snapshot for your support team.`)
             .addFields(
                 { name: "📊 Ticket volume", value: `Total **${tickets.length}**\nActive **${active.length}** • Closed **${closed.length}**\nResolution rate **${resolutionRate}%**`, inline: true },
-                { name: "⚡ Queue health", value: `High / urgent **${urgent.length}**\nSLA reminders **${slaQueue}**\nFirst response **${responseText}**`, inline: true },
-                { name: "🧠 AI coverage", value: `${bar(summaries, tickets.length)}\nSummaries **${summaries}/${tickets.length}**\nCoverage **${aiCoverage}%**`, inline: true },
+                { name: "⚡ Queue health", value: `High / urgent **${urgentCount}**\nSLA reminders **${slaQueue}**\nFirst response **${responseText}**`, inline: true },
+                { name: "🧠 AI coverage", value: `${bar(summaries, tickets.length)}\n**${aiCoverage}%** coverage\n${summaries}/${tickets.length} summaries`, inline: true },
                 { name: "⭐ Customer experience", value: feedback.count ? `Average **${feedback.average}/5** • ${feedback.count} ratings\n\n${ratingDistribution}` : "No ratings yet. Feedback appears here after customers rate closed tickets.", inline: false }
             )
             .setThumbnail(interaction.guild.iconURL({ size: 128 }) || "https://cdn.discordapp.com/embed/avatars/0.png")
