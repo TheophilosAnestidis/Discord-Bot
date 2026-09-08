@@ -247,6 +247,18 @@ db.exec(`
 
         ai_enabled INTEGER NOT NULL DEFAULT 1,
 
+        protection_enabled INTEGER NOT NULL DEFAULT 0,
+
+        protection_log_channel_id TEXT,
+
+        protection_spam_limit INTEGER NOT NULL DEFAULT 5,
+
+        protection_spam_window INTEGER NOT NULL DEFAULT 10,
+
+        protection_anti_links INTEGER NOT NULL DEFAULT 1,
+
+        protection_anti_raid INTEGER NOT NULL DEFAULT 1,
+
         created_at INTEGER NOT NULL,
 
         updated_at INTEGER NOT NULL
@@ -329,6 +341,13 @@ addColumnIfMissing(
     "ai_enabled",
     "INTEGER NOT NULL DEFAULT 1"
 );
+
+addColumnIfMissing("guild_settings", "protection_enabled", "INTEGER NOT NULL DEFAULT 0");
+addColumnIfMissing("guild_settings", "protection_log_channel_id", "TEXT");
+addColumnIfMissing("guild_settings", "protection_spam_limit", "INTEGER NOT NULL DEFAULT 5");
+addColumnIfMissing("guild_settings", "protection_spam_window", "INTEGER NOT NULL DEFAULT 10");
+addColumnIfMissing("guild_settings", "protection_anti_links", "INTEGER NOT NULL DEFAULT 1");
+addColumnIfMissing("guild_settings", "protection_anti_raid", "INTEGER NOT NULL DEFAULT 1");
 
 
 addColumnIfMissing(
@@ -844,6 +863,23 @@ export function getGuildSettings(
         guildId
     ) ?? null;
 
+}
+
+export function updateProtectionSettings(guildId, changes = {}) {
+    const allowed = new Set([
+        "protection_enabled",
+        "protection_log_channel_id",
+        "protection_spam_limit",
+        "protection_spam_window",
+        "protection_anti_links",
+        "protection_anti_raid"
+    ]);
+    const entries = Object.entries(changes).filter(([key]) => allowed.has(key));
+    if (!guildId || !entries.length) return getGuildSettings(guildId);
+    const assignments = entries.map(([key]) => `${key} = ?`).join(", ");
+    db.prepare(`UPDATE guild_settings SET ${assignments}, updated_at = ? WHERE guild_id = ?`)
+        .run(...entries.map(([, value]) => value), Date.now(), guildId);
+    return getGuildSettings(guildId);
 }
 
 

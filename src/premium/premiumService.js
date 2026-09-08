@@ -20,7 +20,7 @@ const OWNER_IDS = new Set(
 
 export const PLANS = Object.freeze({
   starter: { label: 'Starter', price: 4.99, days: 30, features: ['tickets', 'ai', 'transcripts'] },
-  pro: { label: 'Pro', price: 9.99, days: 90, features: ['tickets', 'ai', 'transcripts', 'analytics', 'priority', 'advanced_ai'] },
+  pro: { label: 'Pro', price: 9.99, days: 90, features: ['tickets', 'ai', 'transcripts', 'analytics', 'priority', 'advanced_ai', 'protection'] },
   lifetime: { label: 'Lifetime', price: 29.99, days: null, features: ['*'] }
 });
 

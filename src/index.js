@@ -51,6 +51,7 @@ import {
 
 import { getInactiveTickets, updateTicketRecord, getGuildSettings, closeDatabase } from "./database/database.js";
 import { startActivityServer } from "./activityServer.js";
+import { handleProtectionMessage, handleProtectionJoin } from "./protection/protectionService.js";
 
 
 /*
@@ -83,7 +84,9 @@ const client =
 
             GatewayIntentBits.MessageContent,
 
-            GatewayIntentBits.GuildPresences
+            GatewayIntentBits.GuildPresences,
+
+            GatewayIntentBits.GuildMembers
 
         ]
 
@@ -363,6 +366,8 @@ client.on(
 
         try {
 
+            if (await handleProtectionMessage(message)) return;
+
             await handleAIMessage({
 
                 message
@@ -380,6 +385,14 @@ client.on(
 
     }
 );
+
+client.on("guildMemberAdd", async member => {
+    try {
+        await handleProtectionJoin(member);
+    } catch (error) {
+        console.error("Protection join handler error:", error);
+    }
+});
 
 
 /*

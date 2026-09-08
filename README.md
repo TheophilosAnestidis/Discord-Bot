@@ -3,6 +3,7 @@
 VaultX is a Discord platform containing:
 - Discord bot + AI ticket system
 - Ticket analytics, customer ratings and configurable SLA reminders
+- Pro advanced protection with anti-spam, anti-link and anti-raid checks
 - Admin dashboard
 - Premium licensing and Stripe checkout
 - Standalone Discord Activity
@@ -69,6 +70,15 @@ Optional ticket workflow settings:
 - `TICKET_AUTO_CLOSE_HOURS` controls automatic closure of inactive tickets (default: `24`). Set it to `0` to disable auto-close.
 
 Staff can view the operational metrics from `/ticket analytics`. After a ticket is closed, the ticket owner receives a private 1-5 rating request when Discord DMs are available.
+
+Pro protection:
+
+1. Run `/protection log-channel` and select a staff-only moderation log channel.
+2. Run `/protection enable`.
+3. Use `/protection status` to review the active thresholds.
+4. Use `/protection spam-limit` to change the number of messages allowed in the rolling window.
+
+Protection is available only to Pro and Lifetime servers. It deletes detected spam or links, applies a short timeout after repeated spam, and flags accounts created less than 24 hours before joining. Administrators and members with Manage Messages are bypassed. Enable the `Guild Members` privileged intent in the Discord Developer Portal for anti-raid join checks.
 
 ## Public deployment from a home PC
 
