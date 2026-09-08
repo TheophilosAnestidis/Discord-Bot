@@ -365,24 +365,44 @@ function buildCloseConfirmation() {
 
 function buildFeedbackRow(channelId) {
     return new ActionRowBuilder().addComponents(
-        ...[1, 2, 3, 4, 5].map(rating => new ButtonBuilder()
+        ...[
+            { rating: 1, label: "Poor", emoji: "😞", style: ButtonStyle.Danger },
+            { rating: 2, label: "Fair", emoji: "😕", style: ButtonStyle.Danger },
+            { rating: 3, label: "Good", emoji: "😐", style: ButtonStyle.Secondary },
+            { rating: 4, label: "Great", emoji: "🙂", style: ButtonStyle.Success },
+            { rating: 5, label: "Excellent", emoji: "🤩", style: ButtonStyle.Success }
+        ].map(({ rating, label, emoji, style }) => new ButtonBuilder()
             .setCustomId(`ticket:rating:${channelId}:${rating}`)
-            .setLabel(String(rating))
-            .setStyle(rating >= 4 ? ButtonStyle.Success : rating <= 2 ? ButtonStyle.Danger : ButtonStyle.Secondary))
+            .setLabel(label)
+            .setEmoji(emoji)
+            .setStyle(style))
     );
 }
 
-export async function sendTicketFeedbackRequest(client, ticket, guildName) {
+export async function sendTicketFeedbackRequest(client, ticket, guild) {
     if (!client || !ticket?.owner_id || !ticket.channel_id) return false;
 
     try {
         const owner = await client.users.fetch(ticket.owner_id);
+        const guildName = guild?.name || "VaultX";
+        const guildIcon = guild?.iconURL({ size: 128 }) || null;
+        const closedAt = ticket.closed_at ? `<t:${Math.floor(ticket.closed_at / 1000)}:F>` : "Just now";
+        const ticketType = String(ticket.type || "general").replaceAll("-", " ");
         await owner.send({
             embeds: [new EmbedBuilder()
-                .setColor(CONFIG.colors.info)
-                .setTitle("How was your support experience?")
-                .setDescription(`Your **${guildName || "VaultX"}** ticket has been closed. Please rate the support you received from 1 to 5.`)
-                .setFooter({ text: "Your rating helps the support team improve." })],
+                .setColor(CONFIG.colors.primary)
+                .setAuthor({ name: `${guildName} • Support follow-up`, iconURL: guildIcon || undefined })
+                .setTitle("How did we do?")
+                .setDescription("Your ticket is now closed. Take a second to rate the support experience so the team can keep improving.")
+                .addFields(
+                    { name: "Ticket", value: `#${ticket.channel_id}`, inline: true },
+                    { name: "Category", value: ticketType, inline: true },
+                    { name: "Closed", value: closedAt, inline: true },
+                    { name: "Your feedback", value: "Choose the option that best matches your experience. You can submit one rating per ticket.", inline: false }
+                )
+                .setThumbnail(guildIcon || "https://cdn.discordapp.com/embed/avatars/0.png")
+                .setFooter({ text: `${guildName} • Customer experience` })
+                .setTimestamp()],
             components: [buildFeedbackRow(ticket.channel_id)]
         });
         return true;
@@ -2687,7 +2707,7 @@ export async function handleTicketButton(
         await sendTicketFeedbackRequest(
             interaction.client,
             getTicketRecord(interaction.channel.id),
-            interaction.guild.name
+            interaction.guild
         );
 
 
