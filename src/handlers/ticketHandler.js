@@ -1733,6 +1733,33 @@ export async function handleTicketButton(
 
     }
 
+    const supportedButtonIds = new Set([
+        "ticket:add-user",
+        "ticket:claim",
+        "ticket:priority",
+        "ticket:status",
+        "ticket:ai",
+        "ticket:close",
+        "ticket:close:cancel",
+        "ticket:close:confirm"
+    ]);
+
+    if (!supportedButtonIds.has(interaction.customId)) {
+        try {
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({
+                    content: "This ticket action is no longer available. Please use the current ticket controls.",
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+        } catch (error) {
+            if (error?.code !== 10062 && error?.code !== 40060) {
+                console.warn(`Unsupported ticket button response failed | customId=${interaction.customId}:`, error.message);
+            }
+        }
+        return true;
+    }
+
 
     // Acknowledge the interaction immediately. Discord gives buttons only
     // a short window for the initial response; some ticket actions perform
