@@ -323,10 +323,6 @@ export async function execute(
 
                     .setLabel("Purchase help")
 
-                    .setEmoji(
-                        "🛒"
-                    )
-
                     .setStyle(
                         ButtonStyle.Primary
                     ),
@@ -339,10 +335,6 @@ export async function execute(
                     )
 
                     .setLabel("Bot & development")
-
-                    .setEmoji(
-                        "🤖"
-                    )
 
                     .setStyle(
                         ButtonStyle.Primary
@@ -357,10 +349,6 @@ export async function execute(
 
                     .setLabel("Report a bug")
 
-                    .setEmoji(
-                        "🐛"
-                    )
-
                     .setStyle(
                         ButtonStyle.Danger
                     ),
@@ -374,10 +362,6 @@ export async function execute(
 
                     .setLabel("General support")
 
-                    .setEmoji(
-                        "❓"
-                    )
-
                     .setStyle(
                         ButtonStyle.Secondary
                     )
@@ -388,17 +372,14 @@ export async function execute(
         new ButtonBuilder()
             .setCustomId("ticket:panel:guide")
             .setLabel("How it works")
-            .setEmoji("📘")
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId("ticket:panel:safety")
             .setLabel("Privacy & safety")
-            .setEmoji("🔒")
             .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
             .setCustomId("ticket:panel:status")
             .setLabel("Support status")
-            .setEmoji("📡")
             .setStyle(ButtonStyle.Success)
     );
 
