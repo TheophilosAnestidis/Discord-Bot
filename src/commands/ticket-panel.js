@@ -398,7 +398,7 @@ export async function execute(
         new ButtonBuilder()
             .setCustomId("ticket:panel:status")
             .setLabel("Support status")
-            .setEmoji("◉")
+            .setEmoji("📡")
             .setStyle(ButtonStyle.Success)
     );
 
