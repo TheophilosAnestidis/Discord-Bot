@@ -294,16 +294,13 @@ export async function execute(
         .setAuthor({ name: `${interaction.guild.name} 〢 Support HQ`, iconURL: interaction.guild.iconURL() ?? undefined })
         .setTitle('Support HQ 〢 We are ready to help')
         .setDescription([
-            '> **Choose the lane that matches your request.**',
-            '',
-            'Your private ticket starts with a short intake form so the AI and support team understand the situation immediately.',
-            'Give us the goal, error or problem in your own words. You can always ask for staff.'
+            '> **Choose the lane that matches your request.**'
         ].join('\n'))
         .addFields(
             { name: '01 〢 Choose a category', value: 'Purchase, development, bug or general support.', inline: true },
             { name: '02 〢 Give context', value: 'Share what happened and what you already tried.', inline: true },
             { name: '03 〢 Get resolution', value: 'AI guidance first, with staff escalation available.', inline: true },
-            { name: 'Privacy first', value: 'Never share passwords, tokens, API keys or payment details.', inline: false }
+           /* { name: 'Privacy first', value: 'Never share passwords, tokens, API keys or payment details.', inline: false }*/
         )
         .setColor(0x14b8a6)
         .setThumbnail(interaction.guild.iconURL({ size: 256 }) ?? undefined)
