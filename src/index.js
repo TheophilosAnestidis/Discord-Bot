@@ -51,7 +51,8 @@ import {
 
 import {
     buildTicketIntakeModal,
-    getTicketIntakeType
+    getTicketIntakeType,
+    handleTicketPanelButton
 } from "./commands/ticket-panel.js";
 
 import { getInactiveTickets, updateTicketRecord, getGuildSettings, closeDatabase } from "./database/database.js";
@@ -525,6 +526,18 @@ client.on(
 
             const customId =
                 interaction.customId;
+
+            if (customId.startsWith("ticket:panel:")) {
+                try {
+                    await handleTicketPanelButton(interaction);
+                } catch (error) {
+                    console.error("❌ Ticket panel action error:", error);
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({ content: "❌ Could not load that support panel action.", flags: MessageFlags.Ephemeral });
+                    }
+                }
+                return;
+            }
 
             const intakeType = getTicketIntakeType(customId);
 

@@ -56,6 +56,52 @@ export function buildTicketIntakeModal(type) {
         );
 }
 
+export async function handleTicketPanelButton(interaction) {
+    if (!interaction.isButton() || !interaction.customId.startsWith("ticket:panel:")) return false;
+
+    const action = interaction.customId.slice("ticket:panel:".length);
+    const settings = getGuildSettings(interaction.guildId) || {};
+    const supportRole = interaction.guild?.roles.cache.get(settings.support_role_id);
+
+    const responses = {
+        guide: {
+            title: "What happens next",
+            description: [
+                "1. Choose the category that matches your request.",
+                "2. Describe the problem and what you already tried.",
+                "3. AI support starts first and staff can take over whenever needed."
+            ].join("\n")
+        },
+        safety: {
+            title: "Privacy and safety",
+            description: "Never share passwords, Discord tokens, API keys, private keys or payment details. A staff member will ask for safe diagnostic information only."
+        },
+        status: {
+            title: "Support status",
+            description: [
+                `AI assistance 〢 **${settings.ai_enabled ? "Online" : "Offline"}**`,
+                `Support team 〢 ${supportRole ? `@${supportRole.name}` : "Available through tickets"}`,
+                "Response 〢 Start a ticket and include as much detail as possible."
+            ].join("\n")
+        }
+    };
+
+    const response = responses[action];
+    if (!response) return false;
+
+    await interaction.reply({
+        embeds: [new EmbedBuilder()
+            .setColor(action === "safety" ? 0xf59e0b : action === "status" ? 0x14b8a6 : 0x3b82f6)
+            .setAuthor({ name: `${interaction.guild?.name || "Support"} 〢 Support HQ`, iconURL: interaction.guild?.iconURL() || undefined })
+            .setTitle(response.title)
+            .setDescription(response.description)
+            .setFooter({ text: "Private support • AI-assisted • Staff escalation" })],
+        ephemeral: true
+    });
+
+    return true;
+}
+
 
 const data =
     new SlashCommandBuilder()
@@ -245,25 +291,26 @@ export async function execute(
 
 
     const embed = new EmbedBuilder()
-        .setAuthor({ name: `${interaction.guild.name} 〢 Support`, iconURL: interaction.guild.iconURL() ?? undefined })
-        .setTitle('Support Center 〢 How can we help?')
+        .setAuthor({ name: `${interaction.guild.name} 〢 Support HQ`, iconURL: interaction.guild.iconURL() ?? undefined })
+        .setTitle('Support HQ 〢 We are ready to help')
         .setDescription([
-            '> **Start with the category that best matches your request.**',
+            '> **Choose the lane that matches your request.**',
             '',
-            '• Purchase 〢 orders & payments\n• Bot Help 〢 setup & development\n• Bug Report 〢 errors & issues\n• General 〢 everything else',
-            '',
-            'When you open a ticket, briefly describe the problem and what you have already tried.',
-            'AI support will use that context to guide you, and staff can take over whenever needed.'
+            'Your private ticket starts with a short intake form so the AI and support team understand the situation immediately.',
+            'Give us the goal, error or problem in your own words. You can always ask for staff.'
         ].join('\n'))
-        .addFields({
-            name: 'Before opening a ticket',
-            value: 'Do not share passwords, tokens, API keys or other private credentials.',
-            inline: false
-        })
-        .setColor(0x8b5cf6)
-        .setFooter({ text: `${interaction.guild.name} • Private support • AI-assisted` });
+        .addFields(
+            { name: '01 〢 Choose a category', value: 'Purchase, development, bug or general support.', inline: true },
+            { name: '02 〢 Give context', value: 'Share what happened and what you already tried.', inline: true },
+            { name: '03 〢 Get resolution', value: 'AI guidance first, with staff escalation available.', inline: true },
+            { name: 'Privacy first', value: 'Never share passwords, tokens, API keys or payment details.', inline: false }
+        )
+        .setColor(0x14b8a6)
+        .setThumbnail(interaction.guild.iconURL({ size: 256 }) ?? undefined)
+        .setFooter({ text: `${interaction.guild.name} • Private support • AI-assisted` })
+        .setTimestamp();
 
-    const row =
+    const categoryRow =
         new ActionRowBuilder()
 
             .addComponents(
@@ -274,9 +321,7 @@ export async function execute(
                         "ticket:intake:purchase"
                     )
 
-                    .setLabel(
-                        "Purchase"
-                    )
+                    .setLabel("Purchase help")
 
                     .setEmoji(
                         "🛒"
@@ -293,9 +338,7 @@ export async function execute(
                         "ticket:intake:bot"
                     )
 
-                    .setLabel(
-                        "Bot Help"
-                    )
+                    .setLabel("Bot & development")
 
                     .setEmoji(
                         "🤖"
@@ -312,9 +355,7 @@ export async function execute(
                         "ticket:intake:bug"
                     )
 
-                    .setLabel(
-                        "Bug Report"
-                    )
+                    .setLabel("Report a bug")
 
                     .setEmoji(
                         "🐛"
@@ -331,9 +372,7 @@ export async function execute(
                         "ticket:intake:general"
                     )
 
-                    .setLabel(
-                        "General"
-                    )
+                    .setLabel("General support")
 
                     .setEmoji(
                         "❓"
@@ -344,6 +383,24 @@ export async function execute(
                     )
 
             );
+
+    const utilityRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId("ticket:panel:guide")
+            .setLabel("How it works")
+            .setEmoji("📘")
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId("ticket:panel:safety")
+            .setLabel("Privacy & safety")
+            .setEmoji("🔒")
+            .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+            .setCustomId("ticket:panel:status")
+            .setLabel("Support status")
+            .setEmoji("◉")
+            .setStyle(ButtonStyle.Success)
+    );
 
 
     /*
@@ -360,7 +417,8 @@ export async function execute(
             ],
 
             components: [
-                row
+                categoryRow,
+                utilityRow
             ]
 
         });
