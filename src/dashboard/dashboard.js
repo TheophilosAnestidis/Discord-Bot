@@ -327,7 +327,10 @@ function serializeSettings(settings) {
             closeLogsChannelId: settings.close_logs_channel_id,
             transcriptsChannelId: settings.transcripts_channel_id,
             panelTargetChannelId: settings.panel_target_channel_id,
-            aiEnabled: Boolean(settings.ai_enabled)
+            aiEnabled: Boolean(settings.ai_enabled),
+            aiServerContext: settings.ai_server_context || "",
+            aiSupportInstructions: settings.ai_support_instructions || "",
+            aiEscalationRules: settings.ai_escalation_rules || ""
         }
         : null;
 
@@ -475,6 +478,12 @@ export function startDashboard(client) {
 
     app.use(express.json({ limit: "64kb" }));
     app.use(rateLimit);
+    app.get("/", (_request, response) => {
+        const dashboardPath = path.join(__dirname, "public", "index.html");
+        const html = fs.readFileSync(dashboardPath, "utf8")
+            .replace("</body>", '<script src="/ai-settings.js"></script></body>');
+        return response.type("html").send(html);
+    });
     app.use(express.static(path.join(__dirname, "public")));
 
 
@@ -979,7 +988,10 @@ export function startDashboard(client) {
                     openLogsChannelId: body.openLogsChannelId,
                     closeLogsChannelId: body.closeLogsChannelId,
                     transcriptsChannelId: body.transcriptsChannelId,
-                    panelTargetChannelId: body.panelTargetChannelId
+                    panelTargetChannelId: body.panelTargetChannelId,
+                    aiServerContext: String(body.aiServerContext || "").slice(0, 1000),
+                    aiSupportInstructions: String(body.aiSupportInstructions || "").slice(0, 1500),
+                    aiEscalationRules: String(body.aiEscalationRules || "").slice(0, 1000)
                 });
 
             return response.json({
