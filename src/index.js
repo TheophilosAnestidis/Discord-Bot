@@ -49,6 +49,11 @@ import {
     startDashboard
 } from "./dashboard/dashboard.js";
 
+import {
+    buildTicketIntakeModal,
+    getTicketIntakeType
+} from "./commands/ticket-panel.js";
+
 import { getInactiveTickets, updateTicketRecord, getGuildSettings, closeDatabase } from "./database/database.js";
 import { startActivityServer } from "./activityServer.js";
 import { handleProtectionMessage, handleProtectionJoin } from "./protection/protectionService.js";
@@ -457,6 +462,25 @@ client.on(
             interaction.isModalSubmit()
         ) {
 
+            const intakeType = getTicketIntakeType(interaction.customId);
+
+            if (intakeType) {
+                try {
+                    const issue = interaction.fields.getTextInputValue("ticket_issue").trim();
+                    const attempted = interaction.fields.getTextInputValue("ticket_attempted").trim();
+                    const initialIssue = attempted
+                        ? `${issue}\n\nWhat I already tried:\n${attempted}`
+                        : issue;
+                    await createTicket(interaction, intakeType, initialIssue);
+                } catch (error) {
+                    console.error("❌ Ticket intake error:", error);
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({ content: "❌ Something went wrong while creating your ticket.", flags: MessageFlags.Ephemeral });
+                    }
+                }
+                return;
+            }
+
             try {
 
                 await handleSetupModal(
@@ -501,6 +525,20 @@ client.on(
 
             const customId =
                 interaction.customId;
+
+            const intakeType = getTicketIntakeType(customId);
+
+            if (intakeType) {
+                try {
+                    await interaction.showModal(buildTicketIntakeModal(intakeType));
+                } catch (error) {
+                    console.error("❌ Failed to open ticket intake modal:", error);
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({ content: "❌ Could not open the ticket form.", flags: MessageFlags.Ephemeral });
+                    }
+                }
+                return;
+            }
 
             if (customId.startsWith("ticket:rating:")) {
                 try {

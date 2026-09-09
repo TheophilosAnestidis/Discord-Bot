@@ -5,7 +5,10 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ChannelType
+    ChannelType,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle
 } from "discord.js";
 
 import {
@@ -16,6 +19,42 @@ import {
 } from "../database/database.js";
 
 import { requirePremium, getPremium, formatPremium } from "../premium/premiumService.js";
+
+const ticketIntakePrefix = "ticket:intake:";
+
+export function getTicketIntakeType(customId) {
+    if (!String(customId || "").startsWith(ticketIntakePrefix)) return null;
+    const type = String(customId).slice(ticketIntakePrefix.length);
+    return ["purchase", "bot", "bug", "general"].includes(type) ? type : null;
+}
+
+export function buildTicketIntakeModal(type) {
+    if (!getTicketIntakeType(`${ticketIntakePrefix}${type}`)) return null;
+
+    return new ModalBuilder()
+        .setCustomId(`${ticketIntakePrefix}${type}`)
+        .setTitle("Tell us about your request")
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("ticket_issue")
+                    .setLabel("What do you need help with?")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder("Describe the problem, goal or error clearly")
+                    .setRequired(true)
+                    .setMaxLength(1500)
+            ),
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("ticket_attempted")
+                    .setLabel("What have you already tried?")
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setPlaceholder("Optional: steps, error messages or relevant details")
+                    .setRequired(false)
+                    .setMaxLength(1000)
+            )
+        );
+}
 
 
 const data =
@@ -207,16 +246,22 @@ export async function execute(
 
     const embed = new EmbedBuilder()
         .setAuthor({ name: `${interaction.guild.name} 〢 Support`, iconURL: interaction.guild.iconURL() ?? undefined })
-        .setTitle('Support Center')
+        .setTitle('Support Center 〢 How can we help?')
         .setDescription([
-            '> **Need help?** Choose a category below.',
+            '> **Start with the category that best matches your request.**',
             '',
             '• Purchase 〢 orders & payments\n• Bot Help 〢 setup & development\n• Bug Report 〢 errors & issues\n• General 〢 everything else',
             '',
-            '〢 Private ticket\n〢 AI-assisted support\n〢 Staff escalation'
+            'When you open a ticket, briefly describe the problem and what you have already tried.',
+            'AI support will use that context to guide you, and staff can take over whenever needed.'
         ].join('\n'))
+        .addFields({
+            name: 'Before opening a ticket',
+            value: 'Do not share passwords, tokens, API keys or other private credentials.',
+            inline: false
+        })
         .setColor(0x8b5cf6)
-        .setFooter({ text: 'VaultX • Support Infrastructure' });
+        .setFooter({ text: `${interaction.guild.name} • Private support • AI-assisted` });
 
     const row =
         new ActionRowBuilder()
@@ -226,7 +271,7 @@ export async function execute(
                 new ButtonBuilder()
 
                     .setCustomId(
-                        "ticket:create:purchase"
+                        "ticket:intake:purchase"
                     )
 
                     .setLabel(
@@ -245,7 +290,7 @@ export async function execute(
                 new ButtonBuilder()
 
                     .setCustomId(
-                        "ticket:create:bot"
+                        "ticket:intake:bot"
                     )
 
                     .setLabel(
@@ -264,7 +309,7 @@ export async function execute(
                 new ButtonBuilder()
 
                     .setCustomId(
-                        "ticket:create:bug"
+                        "ticket:intake:bug"
                     )
 
                     .setLabel(
@@ -283,7 +328,7 @@ export async function execute(
                 new ButtonBuilder()
 
                     .setCustomId(
-                        "ticket:create:general"
+                        "ticket:intake:general"
                     )
 
                     .setLabel(

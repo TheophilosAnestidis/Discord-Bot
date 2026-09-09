@@ -5,6 +5,7 @@ import {
     setTicketEscalated,
     isAIEnabled,
     getTicketIntelligence,
+    getTicketRecord,
     updateTicketRecord
 } from "../database/database.js";
 
@@ -548,6 +549,18 @@ export async function handleAIMessage({
 
         let result;
 
+        const ticketRecord = getTicketRecord(channel.id);
+        const settings = getGuildSettings(message.guild.id) || {};
+        const serverContext = {
+            name: String(message.guild.name || "Discord server").slice(0, 100),
+            description: String(message.guild.description || "").slice(0, 500),
+            ticketType: String(ticketRecord?.type || "general").slice(0, 50),
+            category: String(channel.parent?.name || "").slice(0, 100),
+            customContext: String(settings.ai_server_context || "").slice(0, 1000),
+            supportInstructions: String(settings.ai_support_instructions || "").slice(0, 1500),
+            escalationRules: String(settings.ai_escalation_rules || "").slice(0, 1000)
+        };
+
 
         try {
 
@@ -565,7 +578,9 @@ export async function handleAIMessage({
                         message.author.username,
 
                     message:
-                        content
+                        content,
+
+                    serverContext
 
                 });
 

@@ -247,6 +247,12 @@ db.exec(`
 
         ai_enabled INTEGER NOT NULL DEFAULT 1,
 
+        ai_server_context TEXT,
+
+        ai_support_instructions TEXT,
+
+        ai_escalation_rules TEXT,
+
         protection_enabled INTEGER NOT NULL DEFAULT 0,
 
         protection_log_channel_id TEXT,
@@ -353,6 +359,9 @@ addColumnIfMissing(
     "ai_enabled",
     "INTEGER NOT NULL DEFAULT 1"
 );
+addColumnIfMissing("guild_settings", "ai_server_context", "TEXT");
+addColumnIfMissing("guild_settings", "ai_support_instructions", "TEXT");
+addColumnIfMissing("guild_settings", "ai_escalation_rules", "TEXT");
 
 addColumnIfMissing("guild_settings", "protection_enabled", "INTEGER NOT NULL DEFAULT 0");
 addColumnIfMissing("guild_settings", "protection_log_channel_id", "TEXT");
@@ -677,7 +686,13 @@ export function saveGuildSettings({
 
     transcriptsChannelId = null,
 
-    panelTargetChannelId = null
+    panelTargetChannelId = null,
+
+    aiServerContext,
+
+    aiSupportInstructions,
+
+    aiEscalationRules
 
 }) {
 
@@ -733,6 +748,12 @@ export function saveGuildSettings({
 
                 ai_enabled,
 
+                ai_server_context,
+
+                ai_support_instructions,
+
+                ai_escalation_rules,
+
                 created_at,
 
                 updated_at
@@ -752,6 +773,9 @@ export function saveGuildSettings({
                 NULL,
                 NULL,
                 1,
+                ?,
+                ?,
+                ?,
                 ?,
                 ?
 
@@ -773,6 +797,12 @@ export function saveGuildSettings({
             transcriptsChannelId,
 
             panelTargetChannelId,
+
+            aiServerContext ?? null,
+
+            aiSupportInstructions ?? null,
+
+            aiEscalationRules ?? null,
 
             now,
 
@@ -819,6 +849,12 @@ export function saveGuildSettings({
 
             panel_target_channel_id = ?,
 
+            ai_server_context = ?,
+
+            ai_support_instructions = ?,
+
+            ai_escalation_rules = ?,
+
             updated_at = ?
 
         WHERE guild_id = ?
@@ -838,6 +874,12 @@ export function saveGuildSettings({
         transcriptsChannelId,
 
         panelTargetChannelId,
+
+        aiServerContext === undefined ? existing.ai_server_context : aiServerContext,
+
+        aiSupportInstructions === undefined ? existing.ai_support_instructions : aiSupportInstructions,
+
+        aiEscalationRules === undefined ? existing.ai_escalation_rules : aiEscalationRules,
 
         now,
 
@@ -881,6 +923,31 @@ export function getGuildSettings(
         guildId
     ) ?? null;
 
+}
+
+export function updateGuildAISettings(guildId, {
+    aiServerContext = "",
+    aiSupportInstructions = "",
+    aiEscalationRules = ""
+} = {}) {
+    if (!guildId) return null;
+
+    db.prepare(`
+        UPDATE guild_settings
+        SET ai_server_context = ?,
+            ai_support_instructions = ?,
+            ai_escalation_rules = ?,
+            updated_at = ?
+        WHERE guild_id = ?
+    `).run(
+        String(aiServerContext).trim().slice(0, 1000),
+        String(aiSupportInstructions).trim().slice(0, 1500),
+        String(aiEscalationRules).trim().slice(0, 1000),
+        Date.now(),
+        guildId
+    );
+
+    return getGuildSettings(guildId);
 }
 
 export function updateProtectionSettings(guildId, changes = {}) {

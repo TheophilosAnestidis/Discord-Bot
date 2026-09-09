@@ -18,6 +18,7 @@ import {
     setTicketEscalated,
     deleteTicketAIStatus,
     isAIEnabled,
+    saveAIMessage,
     createTicketRecord,
     updateTicketRecord,
     getTicketRecord,
@@ -1119,7 +1120,8 @@ async function sendStaffAILog(
 
 export async function createTicket(
     interaction,
-    type
+    type,
+    initialIssue = null
 ) {
 
     if (
@@ -1429,6 +1431,19 @@ export async function createTicket(
             type: ticketType.name
         });
 
+        const issue = String(initialIssue || '').trim().slice(0, 2600);
+
+        if (issue) {
+            saveAIMessage({
+                ticketId: channel.id,
+                guildId: guild.id,
+                userId: user.id,
+                username: user.username,
+                role: "user",
+                content: issue
+            });
+        }
+
 
         clearAIState(
             channel.id
@@ -1497,6 +1512,17 @@ export async function createTicket(
             }
 
         });
+
+        if (issue) {
+            await channel.send({
+                embeds: [new EmbedBuilder()
+                    .setColor(CONFIG.colors.info)
+                    .setTitle("Initial request received")
+                    .setDescription(`> ${issue.replace(/\n/g, "\n> ")}`)
+                    .setFooter({ text: "VaultX • AI and staff context" })],
+                allowedMentions: { parse: [] }
+            });
+        }
 
 
         await createStaffLogThread(

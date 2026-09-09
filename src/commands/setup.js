@@ -10,7 +10,9 @@ import {
 } from "discord.js";
 
 import {
-    saveGuildSettings
+    saveGuildSettings,
+    updateGuildAISettings,
+    getGuildSettings
 } from "../database/database.js";
 
 
@@ -20,6 +22,9 @@ const setupMenuPrefix =
 const configureModalPrefix =
     "ticket:setup:configure:";
 
+const aiConfigureModalPrefix =
+    "ticket:setup:ai:";
+
 const accessModalPrefix =
     "ticket:setup:access:";
 
@@ -27,17 +32,28 @@ const ticketOwnerPrefix =
     "ticket-owner:";
 
 
-function textInput(customId, label, placeholder) {
+function textInput(customId, label, placeholder, options = {}) {
 
-    return new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
+    const {
+        style = TextInputStyle.Short,
+        maxLength = 25,
+        required = true,
+        value = null
+    } = options;
+
+    const input = new TextInputBuilder()
             .setCustomId(customId)
             .setLabel(label)
             .setPlaceholder(placeholder)
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setMaxLength(25)
-    );
+            .setStyle(style)
+            .setRequired(required)
+            .setMaxLength(maxLength);
+
+    if (value !== null && value !== undefined && String(value).trim()) {
+        input.setValue(String(value).slice(0, maxLength));
+    }
+
+    return new ActionRowBuilder().addComponents(input);
 
 }
 
@@ -86,6 +102,12 @@ function buildSetupMenu(guildId, panelChannelId) {
                     description: "Set roles, categories, logs, and panel channel",
                     value: "configure",
                     emoji: "⚙️"
+                },
+                {
+                    label: "Configure AI support",
+                    description: "Teach the AI about this server and escalation rules",
+                    value: "configure-ai",
+                    emoji: "🤖"
                 },
                 {
                     label: "Give ticket access",
@@ -201,6 +223,36 @@ function buildConfigureModal(guildId, panelChannelId) {
 
 }
 
+function buildAIConfigureModal(guildId) {
+
+    const settings = getGuildSettings(guildId) || {};
+
+    return new ModalBuilder()
+        .setCustomId(`${aiConfigureModalPrefix}${guildId}`)
+        .setTitle("Configure AI Support")
+        .addComponents(
+            textInput(
+                "ai_server_context",
+                "What is this server about?",
+                "Community purpose, products, services or audience",
+                { style: TextInputStyle.Paragraph, maxLength: 1000, required: false, value: settings.ai_server_context || "" }
+            ),
+            textInput(
+                "ai_support_instructions",
+                "How should AI help users?",
+                "Tone, steps, links or server-specific support guidance",
+                { style: TextInputStyle.Paragraph, maxLength: 1500, required: false, value: settings.ai_support_instructions || "" }
+            ),
+            textInput(
+                "ai_escalation_rules",
+                "When should AI call staff?",
+                "Cases that must be escalated to your support team",
+                { style: TextInputStyle.Paragraph, maxLength: 1000, required: false, value: settings.ai_escalation_rules || "" }
+            )
+        );
+
+}
+
 
 function buildAccessModal(action, guildId) {
 
@@ -292,6 +344,16 @@ export async function handleSetupMenu(interaction) {
                 guildId,
                 panelChannelId
             )
+        );
+
+        return true;
+
+    }
+
+    if (action === "configure-ai") {
+
+        await interaction.showModal(
+            buildAIConfigureModal(guildId)
         );
 
         return true;
@@ -402,6 +464,39 @@ async function handleConfigureModal(interaction, guildId, panelChannelId) {
             `🟢 Open logs: #${openLogs.name}\n` +
             `🔴 Close logs: #${closeLogs.name}\n` +
             `📄 Transcripts: #${transcripts.name}`,
+        ephemeral: true
+    });
+
+}
+
+async function handleAIConfigureModal(interaction, guildId) {
+
+    const guild = getGuild(interaction, guildId);
+
+    if (!guild) {
+        return interaction.reply({
+            content: "❌ That server is no longer available to this bot.",
+            ephemeral: true
+        });
+    }
+
+    const member = await guild.members.fetch(interaction.user.id);
+
+    if (!isAdministrator(member)) {
+        return interaction.reply({
+            content: "❌ Only server administrators can save AI settings.",
+            ephemeral: true
+        });
+    }
+
+    updateGuildAISettings(guildId, {
+        aiServerContext: getText(interaction, "ai_server_context"),
+        aiSupportInstructions: getText(interaction, "ai_support_instructions"),
+        aiEscalationRules: getText(interaction, "ai_escalation_rules")
+    });
+
+    return interaction.reply({
+        content: "✅ Advanced AI support settings saved for this server.",
         ephemeral: true
     });
 
@@ -548,6 +643,17 @@ export async function handleSetupModal(interaction) {
             interaction,
             values[0],
             values[1]
+        );
+
+    }
+
+    if (customId.startsWith(aiConfigureModalPrefix)) {
+
+        const guildId = customId.slice(aiConfigureModalPrefix.length);
+
+        return handleAIConfigureModal(
+            interaction,
+            guildId
         );
 
     }
